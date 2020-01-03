@@ -1,0 +1,23 @@
+# Created by https://www.gitignore.io/api/certificates,visualstudiocode
+
+### certificates ###
+*.pem
+*.key
+*.crt
+*.priv
+
+### logs ###
+*.log
+
+### VisualStudioCode ###
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+### VisualStudioCode Patch ###
+# Ignore all local history of files
+.history
+
+# End of https://www.gitignore.io/api/certificates,visualstudiocode

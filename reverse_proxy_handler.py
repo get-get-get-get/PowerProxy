@@ -15,6 +15,9 @@ import queue
 
 class ProxyHandler:
 
+    shutdown_flag = threading.Event()
+
+
     def __init__(self, proxy_addr, proxy_port, listen_addr, listen_port):
 
         # Server that handles clients
@@ -68,7 +71,8 @@ class ProxyHandler:
     def serve(self):
 
         # Handle Ctrl-C
-        signal.signal(signal.SIGINT, self.sigint_handler)
+        signal.signal(signal.SIGINT, self.sig_handler)
+        signal.signal(signal.SIGTERM, self.sig_handler)
 
         if not self.ssl_context:
             logger.warning("[!] WARNING: SSL context not set. Connections to reverse proxies will not be encrypted!")
@@ -109,7 +113,8 @@ class ProxyHandler:
                 self.client_address, self.client_port))
 
             # TODO: some sort of monitoring process. Temporarily just join() thread to keep proc going
-            client_listener_t.join()
+            while not self.shutdown_flag.is_set():
+                time.sleep(0.5)
 
         except Exception as e:
             logger.error("[!] ERROR in master thread: {}".format(e))
@@ -117,17 +122,18 @@ class ProxyHandler:
         finally:
             self.kill_local_process()
 
-    def sigint_handler(self, signal_number, stack_frame):
+    def sig_handler(self, signal_number, stack_frame):
 
-        logger.warning("[!] SIGINT received")
+        logger.warning("[!] Signal received: {}".format(signal_number))
+        
         self.kill_local_process()
 
 
     # Close all sockets and threads, then exit. Does not send kill signal to remote machines
     def kill_local_process(self):
 
-        logger.info("Shutting down!")
-
+        #logger.info("Shutting down!")
+        self.shutdown_flag.set()
         self.reverse_listener_sock.close()
         self.client_listener_sock.close()
 
@@ -165,7 +171,7 @@ class ProxyHandler:
         # Track known reverse machines
         known_connections = set()
 
-        while True:
+        while not self.shutdown_flag.is_set():
 
             # Accept connection, not yet encrypted
             clear_socket, address = listen_socket.accept()
@@ -193,7 +199,7 @@ class ProxyHandler:
 
         srv_sock.listen(backlog)
 
-        while True:
+        while not self.shutdown_flag.is_set():
             client_socket, address = srv_sock.accept()
             address = f"{address[0]}:{address[1]}"
             logger.info("[*] Client connected from {}".format(address))
@@ -229,7 +235,7 @@ class ProxyHandler:
         reverse_socket.setblocking(False)
         client_socket.setblocking(False)
 
-        while True:
+        while  not self.shutdown_flag.is_set():
             receivable, __, __ = select.select(
                 [reverse_socket, client_socket], [reverse_socket, client_socket], [])
 

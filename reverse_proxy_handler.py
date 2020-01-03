@@ -61,7 +61,7 @@ class ProxyHandler:
             ssl_context.verify_mode = ssl.CERT_OPTIONAL
         
         self.ssl_context = ssl_context
-        logger.debug("[^] Set SSL context: {}".format(ssl_context))
+        logger.debug("Set SSL context: {}".format(ssl_context))
 
     # Master thread
     def serve(self):
@@ -85,7 +85,7 @@ class ProxyHandler:
                 name="reverse_listener"
             )
             reverse_listener_t.start()
-            logger.info("[^] Listening for reverse proxies on {}:{}".format(
+            logger.info("Listening for reverse proxies on {}:{}".format(
                 self.reverse_address, self.reverse_port))
 
             # Listen for clients
@@ -101,7 +101,7 @@ class ProxyHandler:
                 name="client_listener"
             )
             client_listener_t.start()
-            logger.info("[^] Listening for clients on {}:{}".format(
+            logger.info("Listening for clients on {}:{}".format(
                 self.client_address, self.client_port))
 
             # TODO: some sort of monitoring process. Temporarily just join() thread to keep proc going
@@ -164,7 +164,7 @@ class ProxyHandler:
             if self.ssl_context:
                 reverse_socket = self.ssl_context.wrap_socket(
                     clear_socket, server_side=True)
-                logger.debug("[^] Encrypted connection with {}".format(address))
+                logger.debug("Encrypted connection with {}".format(address))
             else:
                 reverse_socket = clear_socket
 
@@ -269,7 +269,7 @@ class ProxyHandler:
 
             logger.error("[!] No reverse proxies available: {}".format(e))
             logger.debug(
-                "[^] Waiting {} seconds (at most) for a proxy to connect".format(wait * max_attempts))
+                "Waiting {} seconds (at most) for a proxy to connect".format(wait * max_attempts))
 
             for i in range(max_attempts - 1):
                 time.sleep(wait)
@@ -305,7 +305,7 @@ class ProxyHandler:
                 i += 1
 
 
-        logger.debug("[^] Reverse proxy replied: {}".format(data))
+        logger.debug("Reverse proxy replied: {}".format(data))
         if data != b"WOKE":
             logger.error("[!] Unexpected reply from reverse proxy: {}".format(data))
             # raise

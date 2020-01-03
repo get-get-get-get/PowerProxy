@@ -179,10 +179,13 @@ class ProxyHandler:
             try:
                 clear_socket, address = listen_socket.accept()
             except socket.timeout:
-                if self.shutdown_flag.is_set():
+                continue
+            except OSError as e:
+                if e.errno == 9:
                     return
                 else:
-                    continue
+                    raise
+
 
                     
             logger.debug(
@@ -213,10 +216,15 @@ class ProxyHandler:
             try:
                 client_socket, address = srv_sock.accept()
             except socket.timeout:
-                if self.shutdown_flag.is_set():
+                continue
+            # When shutdown signalled, socket is destroyed at some point, raises OSerror errno9
+            except OSError as e:
+                if e.errno == 9:
                     return
                 else:
-                    continue
+                    raise
+
+
             address = f"{address[0]}:{address[1]}"
             logger.info("[*] Client connected from {}".format(address))
 

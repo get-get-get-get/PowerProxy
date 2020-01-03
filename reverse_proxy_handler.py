@@ -126,7 +126,7 @@ class ProxyHandler:
 
     def sig_handler(self, signal_number, stack_frame):
 
-        logger.warning("[!] Signal received: {}".format(signal_number))
+        logger.warning("\n[!] Signal received: {}".format(signal_number))
         
         self.kill_local_process()
 

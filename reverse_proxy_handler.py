@@ -4,6 +4,7 @@ import logging
 import logging.handlers
 import os
 import select
+import signal
 import socket
 import ssl
 import sys
@@ -66,6 +67,10 @@ class ProxyHandler:
     # Master thread
     def serve(self):
 
+        # Handle Ctrl-C
+        signal.signal(signal.SIGINT, self.kill_local_process)
+
+
         if not self.ssl_context:
             logger.warning("[!] WARNING: SSL context not set. Connections to reverse proxies will not be encrypted!")
 
@@ -123,7 +128,7 @@ class ProxyHandler:
             s = self.remote_sockets.get()
             s.close()
 
-        exit()
+        sys.exit(0)
 
     # Send "KILL" message to reverse proxies
     def kill_reverse_process(self, address=None):

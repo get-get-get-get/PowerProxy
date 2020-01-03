@@ -127,7 +127,7 @@ class ProxyHandler:
     def sig_handler(self, signal_number, stack_frame):
 
         if signal_number == 2:
-            logger.warning("\n[!] SIGINT received!")
+            logger.warning("\n[!] SIGINT received")
         else:
             logger.warning("\n[!] Signal received: {}".format(signal_number))
         

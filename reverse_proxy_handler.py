@@ -218,7 +218,7 @@ class ProxyHandler:
         client_socket.setblocking(False)
 
         while True:
-            receivable, writable, exceptional = select.select(
+            receivable, __, __ = select.select(
                 [reverse_socket, client_socket], [reverse_socket, client_socket], [])
 
             for sock in receivable:
@@ -271,7 +271,7 @@ class ProxyHandler:
             logger.debug(
                 "Waiting {} seconds (at most) for a proxy to connect".format(wait * max_attempts))
 
-            for i in range(max_attempts - 1):
+            for __ in range(max_attempts - 1):
                 time.sleep(wait)
                 try:
                     reverse_socket = self.remote_sockets.get()

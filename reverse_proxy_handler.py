@@ -68,7 +68,7 @@ class ProxyHandler:
     def serve(self):
 
         # Handle Ctrl-C
-        signal.signal(signal.SIGINT, self.kill_local_process)
+        signal.signal(signal.SIGINT, self.sigint_handler)
 
         if not self.ssl_context:
             logger.warning("[!] WARNING: SSL context not set. Connections to reverse proxies will not be encrypted!")

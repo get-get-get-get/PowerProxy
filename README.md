@@ -21,6 +21,7 @@ openssl x509 -in cert.pem -noout -sha1 -fingerprint | cut -d "=" -f 2 | tr -d ":
 
 ## Usage
 
+For detailed usage, check out PowerProxy's help, or use *./reverse_proxy_handler.py --help*
 ### **Run a reverse proxy**
 On local machine, start the handler:
 ```bash

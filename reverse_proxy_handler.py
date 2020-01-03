@@ -83,6 +83,7 @@ class ProxyHandler:
                 socket.AF_INET, socket.SOCK_STREAM)
             reverse_listener.setsockopt(
                 socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            reverse_listener.settimeout(0.5)
             reverse_listener.bind((self.reverse_address, self.reverse_port))
             self.reverse_listener_sock = reverse_listener
 
@@ -100,6 +101,7 @@ class ProxyHandler:
             client_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_listener.setsockopt(
                 socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            client_listener.settimeout(0.5)
             client_listener.bind((self.client_address, self.client_port))
             self.client_listener_sock = client_listener
 
@@ -174,7 +176,15 @@ class ProxyHandler:
         while not self.shutdown_flag.is_set():
 
             # Accept connection, not yet encrypted
-            clear_socket, address = listen_socket.accept()
+            try:
+                clear_socket, address = listen_socket.accept()
+            except socket.timeout:
+                if self.shutdown_flag.is_set():
+                    return
+                else:
+                    continue
+
+                    
             logger.debug(
                 "[+] New reverse connection from {}:{}".format(address[0], address[1]))
 
@@ -200,7 +210,13 @@ class ProxyHandler:
         srv_sock.listen(backlog)
 
         while not self.shutdown_flag.is_set():
-            client_socket, address = srv_sock.accept()
+            try:
+                client_socket, address = srv_sock.accept()
+            except socket.timeout:
+                if self.shutdown_flag.is_set():
+                    return
+                else:
+                    continue
             address = f"{address[0]}:{address[1]}"
             logger.info("[*] Client connected from {}".format(address))
 

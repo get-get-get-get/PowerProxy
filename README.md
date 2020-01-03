@@ -47,7 +47,7 @@ Start-SocksProxy Start-SocksProxy 172.10.2.20 -Port 9050
 Use PSCredential objects to require a username and password:
 ```powershell
 # Create the credential
-$Password = ConvertTo-SecureString -AsPlaintext -Force "Pa$$w0rd123"
+$Password = ConvertTo-SecureString -AsPlaintext -Force "Passw0rd123"
 $Cred = New-Object System.Management.Automation.PSCredential ("ProxyUser", $Password)
 
 Start-ReverseSocksProxy -Credential $Cred -Address 10.10.10.24 -Verbose

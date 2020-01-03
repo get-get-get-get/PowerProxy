@@ -117,11 +117,17 @@ class ProxyHandler:
         finally:
             self.kill_local_process()
 
+    def sigint_handler(self, signal_number, stack_frame):
+
+        logger.warning("[!] SIGINT received")
+        self.kill_local_process()
+
+
     # Close all sockets and threads, then exit. Does not send kill signal to remote machines
     def kill_local_process(self):
 
         logger.info("Shutting down!")
-        
+
         self.reverse_listener_sock.close()
         self.client_listener_sock.close()
 

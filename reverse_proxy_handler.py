@@ -65,7 +65,7 @@ class ProxyHandler:
             ssl_context.verify_mode = ssl.CERT_OPTIONAL
         
         self.ssl_context = ssl_context
-        logger.debug("Set SSL context: {}".format(ssl_context.protocol))
+        logger.debug("[&] SSL enabled")
 
     # Master thread
     def serve(self):

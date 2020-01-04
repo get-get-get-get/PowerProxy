@@ -356,6 +356,10 @@ class ProxyHandler:
 
                 # Means connection closed
                 if len(data) == 0:
+                    # Close socket
+                    reverse_sock.shutdown(socket.SHUT_RDWR)         # Disallow further reads and writes
+                    reverse_sock.close()
+
                     # Remove socket (and possibly host) from reverse_connections
                     if self.reverse_connections.get(address, False):
                         self.reverse_connections[address].remove(sock_id)
@@ -372,7 +376,7 @@ class ProxyHandler:
  
             # timeout will happen if connection still open
             except socket.timeout:
-                
+
                 # If address is known
                 if self.reverse_connections.get(address, False):
                     if sock_id not in self.reverse_connections[address]:

@@ -184,7 +184,7 @@ class ProxyHandler:
 
             # Accept connection, not yet encrypted
             try:
-                clear_socket, address = listen_socket.accept()
+                clear_socket, __ = listen_socket.accept()
             except socket.timeout:
                 continue
             except OSError as e:
@@ -197,7 +197,6 @@ class ProxyHandler:
             if self.ssl_context:
                 reverse_socket = self.ssl_context.wrap_socket(
                     clear_socket, server_side=True)
-                logger.debug("[&] Encrypted connection with {}".format(address))
             else:
                 reverse_socket = clear_socket
 
@@ -223,7 +222,7 @@ class ProxyHandler:
 
 
             address = f"{address[0]}:{address[1]}"
-            logger.info("[*] Client connected from {}".format(address))
+            logger.debug("[*] Client connected from {}".format(address))
 
             forward_conn_t = threading.Thread(
                 target=self.forward_connection,
@@ -368,7 +367,6 @@ class ProxyHandler:
                     # Remove host if there are no remaining connections
                     if len(self.reverse_connections[address]) == 0:
                         del self.reverse_connections[address]
-
                         logger.info("[-] Reverse proxy {} lost".format(address))
 
  

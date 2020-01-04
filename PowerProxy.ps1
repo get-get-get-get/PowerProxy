@@ -182,6 +182,7 @@ function Start-ReverseSocksProxy {
     # https://stackoverflow.com/questions/38102068/sessionstateproxy-variable-with-runspace-pools
     $WorkerVariable = New-Object System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList 'WorkerArgs', $WorkerArgs, $null
     $InitialSessionState.Variables.Add($WorkerVariable)
+    
 
     # Create runspacepool
     $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $Connections, $InitialSessionState, $Host)
@@ -230,7 +231,8 @@ function Start-ReverseSocksProxy {
                 Write-Host ""
                 Write-Warning "CTRL-C detected - closing connections and exiting"
                 foreach ($Worker in $Workers) {
-                    $Worker.Powershell.EndInvoke($Worker.AsyncResult)
+                    $Worker.Powershell.dispose()
+                    #$Worker.Powershell.EndInvoke($Worker.AsyncResult)
                 }
                 [Console]::TreatControlCAsInput = $False
                 _Exit-Script -HardExit $True

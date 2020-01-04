@@ -222,7 +222,7 @@ class ProxyHandler:
 
 
             address = f"{address[0]}:{address[1]}"
-            logger.debug("[*] Client connected from {}".format(address))
+            logger.info("[*] Client connected from {}".format(address))
 
             forward_conn_t = threading.Thread(
                 target=self.forward_connection,
@@ -423,8 +423,6 @@ class ProxyHandler:
             else:
                 i += 1
 
-
-        logger.debug("Reverse proxy replied: {}".format(data))
         if data != b"WOKE":
             logger.error("[!] Unexpected reply from reverse proxy: {}".format(data))
             # raise

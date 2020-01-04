@@ -238,12 +238,11 @@ class ProxyHandler:
         reverse_socket = self.get_available_reverse(wait=wait, max_attempts=max_fails)
         
         # Get basic info on client/remote
-        client_name = client_socket.getpeername()
-        remote_name = reverse_socket.getpeername()
+        client_addr = client_socket.getpeername()
+        reverse_addr = reverse_socket.getpeername()
 
         # debug message
-        logger.debug("[_] Tunneling {} through {}".format(
-            client_name, remote_name, ))
+        logger.debug("[_] Tunneling {} through {}".format(client_addr, reverse_addr))
 
         # Send reverse_socket "WAKE" message to wake for proxying
         self.wake_reverse(reverse_socket)
@@ -256,8 +255,7 @@ class ProxyHandler:
         client_socket.setblocking(False)
 
         while  not self.shutdown_flag.is_set():
-            receivable, __, __ = select.select(
-                [reverse_socket, client_socket], [reverse_socket, client_socket], [])
+            receivable, __, __ = select.select([reverse_socket, client_socket], [], [])
 
             for sock in receivable:
 
@@ -266,6 +264,8 @@ class ProxyHandler:
                     while True:
                         try:
                             buf = reverse_socket.recv(2048)
+                        except (BlockingIOError, ssl.SSLWantReadError):
+                            break
                         except Exception as e:
                             logger.debug(
                                 "[!] Error receiving from remote: {}".format(e))
@@ -277,12 +277,16 @@ class ProxyHandler:
                             data += buf
                     if len(data) != 0:
                         client_socket.sendall(data)
+                    else:
+                        logger.error("[!] Reverse proxy may have disconnected!")
 
                 if sock is client_socket:
                     data = b''
                     while True:
                         try:
                             buf = client_socket.recv(2048)
+                        except BlockingIOError:
+                            break
                         except Exception as e:
                             logger.debug(
                                 "[!] Error receiving from client: {}".format(e))
@@ -294,6 +298,13 @@ class ProxyHandler:
                             data += buf
                     if len(data) != 0:
                         reverse_socket.sendall(data)
+                    else:
+                        # Connection is closed
+                        logger.debug("[x] Forwarding for client {} complete".format(client_addr))
+                        client_socket.close()
+                        reverse_socket.close()
+                        return
+
 
     # Return socket connected to reverse proxy
     def get_available_reverse(self, wait=1, max_attempts=5):

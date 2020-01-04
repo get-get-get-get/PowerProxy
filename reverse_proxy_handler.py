@@ -36,7 +36,7 @@ class ProxyHandler:
         self.ssl_key = None
 
         # Active connections to remote proxies (sockets)
-        self.remote_sockets = queue.Queue()
+        self.reverse_sockets = queue.Queue()
 
     # SSL/TLS for connection with remote proxies
     def set_ssl_context(self, certificate=None, private_key=None, verify=True):
@@ -143,8 +143,8 @@ class ProxyHandler:
         self.reverse_listener_sock.close()
         self.client_listener_sock.close()
 
-        while not self.remote_sockets.empty():
-            s = self.remote_sockets.get()
+        while not self.reverse_sockets.empty():
+            s = self.reverse_sockets.get()
             s.close()
 
         sys.exit(0)
@@ -204,7 +204,7 @@ class ProxyHandler:
                 reverse_socket = clear_socket
 
             # Store socket for use with client later
-            self.remote_sockets.put(reverse_socket)
+            self.reverse_sockets.put(reverse_socket)
 
             # Announce connection if new remote address
             if address[0] not in known_connections:
@@ -309,7 +309,7 @@ class ProxyHandler:
         reverse_socket = None
 
         try:
-            reverse_socket = self.remote_sockets.get()
+            reverse_socket = self.reverse_sockets.get()
         # Don't know the specific exception when getting from empty queue (TODO)
         except Exception as e:
 
@@ -320,7 +320,7 @@ class ProxyHandler:
             for __ in range(max_attempts - 1):
                 time.sleep(wait)
                 try:
-                    reverse_socket = self.remote_sockets.get()
+                    reverse_socket = self.reverse_sockets.get()
                     break
                 except:
                     pass

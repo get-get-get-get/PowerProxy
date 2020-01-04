@@ -878,7 +878,7 @@ function Start-SocksProxyConnection {
     }
         
     # Otherwise, connect to destination and send response accepting request
-    Write-Verbose "[_] Tunneling client to $($SocksRequest.DestinationAddress)`:$($SocksRequest.DestinationPort)"
+    Write-Host "[_] Tunneling client to $($SocksRequest.DestinationAddress)`:$($SocksRequest.DestinationPort)"
     $ProxyDestination = New-Object System.Net.Sockets.TcpClient($SocksRequest.DestinationAddress, $SocksRequest.DestinationPort)
     if ($ProxyDestination.Connected) {
         $SocksRequest | Write-SocksResponse $ClientStream
@@ -1184,8 +1184,6 @@ function Start-Socks5Negotiation {
         $AcceptedMethods = @("NOAUTH")
     )
 
-    # debug
-    Write-Host "Starting Socks5 negotiation"
 
     ##########
     # Negotiation
@@ -1212,7 +1210,6 @@ function Start-Socks5Negotiation {
             if ($AcceptedMethods -contains "NOAUTH") {
                 $ChosenMethod = "NOAUTH"
             }
-            Write-Verbose "Using $ChosenMethod method"
         }
 
         # Reply with chosen method
@@ -1223,7 +1220,7 @@ function Start-Socks5Negotiation {
             Confirm-Socks5UserPass $ClientStream -Credential $Credential           
         }
         elseif ($ChosenMethod -eq "GSSAPI") {
-            write-host "how did u get here"
+            Write-Warning "GSSAPI not implemented"
             return
         }
         else {
@@ -1253,23 +1250,24 @@ function Start-Socks5Negotiation {
     
     #>
 
-    Write-Host "Reading Socks5 request"
     # Read actual Socks5 request. Expect object shown above
     $SocksRequest = Read-Socks5Request $ClientStream
-    write-host "$SocksRequest"
 
     #### connect to target
     if ($SocksRequest.Command -eq "CONNECT") {
         # TODO: actually do this instead of just copy/paste
-        Write-Verbose "[_] Tunneling client to $($SocksRequest.DestinationAddress)`:$($SocksRequest.DestinationPort)"
+        Write-Host "[_] Tunneling client to $($SocksRequest.DestinationAddress)`:$($SocksRequest.DestinationPort)"
         $ProxyDestination = New-Object System.Net.Sockets.TcpClient($SocksRequest.DestinationAddress, $SocksRequest.DestinationPort)
         if ($ProxyDestination.Connected) {
-            Write-Host "Connected to target"
             $SocksRequest | Write-Socks5Response $ClientStream
+        }
+        else {
+            $SocksRequest | Write-Socks5Response $ClientStream -Reject
         }
     }
     else {
-        write-host "not ready yet"
+        write-warning "Request type not yet implemented. Only CONNECT requests accepted"
+        $SocksRequest | Write-Socks5Response $ClientStream -Reject
     }
 
     ### CONNECT STREAMS
@@ -1427,9 +1425,6 @@ function Confirm-Socks5UserPass {
 
     $Buffer = new-object byte[] 32
     
-    # debug
-    Write-Host "Readings USERPASS request"
-
     $ClientStream.Read($Buffer, 0, 2) | Out-Null
 
     if ($Buffer[0] -ne 1) {
@@ -1440,31 +1435,28 @@ function Confirm-Socks5UserPass {
 
     ##### USERNAME
     $UnameLen = $Buffer[1]
-    Write-Host "Username length: $UnameLen bytes"
     # Probably safe to just create a buffer of this size since only 1 byte
     $Buffer = new-object byte[] $UnameLen
     $ClientStream.Read($Buffer, 0, $UnameLen) | Out-Null
-    Write-Host "Username bytes: $Buffer"
 
     $Username = Convert-BytesToString $Buffer
-    Write-Host "Username: $Username"
+    Write-Verbose "[&] Authentication attempt from $Username"
 
     ##### PASSWORD
     $ClientStream.Read($Buffer, 0, 1) | Out-Null
     $PasswdLen = $Buffer[0]
-    Write-Host "Password length: $PasswdLen bytes"
+
     $Buffer = new-object byte[] $PasswdLen
     $ClientStream.Read($Buffer, 0, $PasswdLen) | Out-Null
-    Write-Host "Password bytes: $Buffer"
+
     # Probably somewhat insecure to do this, but:
     $PlaintextPassword = Convert-BytesToString $Buffer
-    Write-Host "Password: $PlaintextPassword"
+
     # Make credential
     $Password = ConvertTo-SecureString -AsPlainText -Force $PlaintextPassword
     $ClientCredential = New-Object System.Management.Automation.PSCredential($Username, $Password)
 
     ##### VALIDATE
-    Write-Host "Validating client credentials..."
     $ValidAuthentication = Confirm-SocksCredential -ClientCredential $ClientCredential -ValidCredential $Credential 
     if ($ValidAuthentication) {
         Write-Verbose "[&] Client authenticated!"
@@ -1484,7 +1476,6 @@ function Confirm-Socks5UserPass {
 
     $ClientStream.Write($Buffer, 0, $Buffer.Length)
     $ClientStream.Flush()
-    Write-Host "Sent USERPASS response"
 
     # Immediately close connection if auth failed
     if ($ValidAuthentication -eq $false) {
@@ -1517,7 +1508,6 @@ function Read-Socks5Request {
 
     )
     
-    write-host "in read-socks5request"
     $Buffer = new-object system.Byte[] 32
     $ClientStream.Read($Buffer, 0, 4) | Out-Null
 
@@ -1549,9 +1539,7 @@ function Read-Socks5Request {
     elseif ($AddressType -eq "IPv4") {
 
         $ClientStream.Read($Buffer, 0, 4) | Out-Null
-        write-host "$buffer"
         $DestAddress = New-Object System.Net.IPAddress(, $Buffer[0..3])
-        Write-Host "Requested address: $($DestAddress.IpAddressToString)"
     }
     else {
         $ClientStream.Read($Buffer, 0, 16) | Out-Null
@@ -1562,7 +1550,6 @@ function Read-Socks5Request {
     $ClientStream.Read($Buffer, 0, 2) | Out-Null
     $DestPort = ($Buffer[0] * 256) + $Buffer[1]
 
-    write-host "destport: $DestPort"
     $Socks5Request = New-object psobject -Property @{
         ClientStream           = $ClientStream
         Version                = $Version
@@ -1645,15 +1632,13 @@ function Write-Socks5Response {
         $Buffer[3] = 1
         $AddressBuffer = $BoundAddress.getaddressbytes()
     }
-    write-host "address: $ADDRESSBUFFER"
+
     # Add buffer and addressbuffer
     [byte[]] $Buffer += $AddressBuffer
-    write-host "buffer + addressbuffer = $buffer"
 
     # Last field is port (2 bytes)
     [byte[]] $Buffer += (Convert-IntToBytes $BoundPort -Size 2)
 
-    Write-Host "Prepared response: $Buffer"
     # Send response
     $ClientStream.Write($Buffer, 0, $Buffer.Length)
     $ClientStream.Flush()

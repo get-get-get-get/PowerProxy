@@ -361,20 +361,16 @@ class ProxyHandler:
                     reverse_sock.close()
 
                     # Remove socket (and possibly host) from reverse_connections
-                    if self.reverse_connections.get(address, False):
-                        self.reverse_connections[address].remove(sock_id)
-                        conns = len(self.reverse_connections[address])
-                        logger.debug("[-] Connection to proxy {} lost ({} remain)".format(address, conns))
+                    self.reverse_connections[address].remove(sock_id)
+                    conns = len(self.reverse_connections[address])
+                    logger.debug("[-] Connection to proxy {} lost ({} remain)".format(address, conns))
 
-                        # Remove host if there are no remaining connections
-                        if len(self.reverse_connections[address]) == 0:
-                            del self.reverse_connections[address]
+                    # Remove host if there are no remaining connections
+                    if len(self.reverse_connections[address]) == 0:
+                        del self.reverse_connections[address]
 
-                            logger.info("[-] Reverse proxy {} lost".format(address))
+                        logger.info("[-] Reverse proxy {} lost".format(address))
 
-                    else:
-                        # i mean this shouldn't happen
-                        pass
  
             # timeout will happen if connection still open
             except socket.timeout:

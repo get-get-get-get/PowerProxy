@@ -392,6 +392,7 @@ class ProxyHandler:
                 else:
                     logger.info("[+] New reverse proxy: {}".format(address))
                     reverse_host = ReverseHost(count=1, socket_ids=set())
+                    reverse_host.count = 1
                     reverse_host.socket_ids.add(sock_id)
                     self.reverse_connections[address] = reverse_host
 

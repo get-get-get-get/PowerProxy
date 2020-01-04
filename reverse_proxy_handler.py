@@ -349,6 +349,8 @@ class ProxyHandler:
             
             # Get a connection to check on
             reverse_sock = self.reverse_sockets.get()
+            address, port = reverse_sock.getpeername()
+            sock_id = id(reverse_sock)
 
             # store current timeout setting
             old_timeout = reverse_sock.gettimeout()
@@ -360,17 +362,28 @@ class ProxyHandler:
 
                 # Means connection closed
                 if len(data) == 0:
-                    logger.debug("[-] Connection from TODO closed")
-                    # Whatever here
+                    # Remove socket (and possibly host) from reverse_connections
+                    if self.reverse_connections.get(address, False):
+                        self.reverse_connections[address].socket_ids.remove(sock_id)
+                        self.reverse_connections[address].count -= 1
+                        logger.debug("[-] Connection to {}:{} closed".format(address, port))
 
+                        # Remove host if there are no remaining connections
+                        if self.reverse_connections[address].count == 0:
+                            del self.reverse_connections[address]
+                            logger.info("[-] Reverse proxy lost: {}".format(address))
+
+                    else:
+                        # i mean this shouldn't happen
+                        pass
+ 
             # timeout will happen if connection still open
             except socket.timeout:
 
                 # Socket is valid, so track in self.reverse_connections
-                address = reverse_sock.getpeername()[0]
+                
                 # If address is known
                 if self.reverse_connections.get(address, False):
-                    sock_id = id(reverse_sock)
                     if sock_id not in self.reverse_connections[address].socket_ids:
                         # socket/connection is new
                         self.reverse_connections[address].socket_ids.add(sock_id)
@@ -379,7 +392,7 @@ class ProxyHandler:
                 else:
                     logger.info("[+] New reverse proxy: {}".format(address))
                     reverse_host = ReverseHost(count=1, socket_ids=set())
-                    reverse_host.socket_ids.add(id(reverse_sock))
+                    reverse_host.socket_ids.add(sock_id)
                     self.reverse_connections[address] = reverse_host
 
                 # Set timeout to original value, put back in queue

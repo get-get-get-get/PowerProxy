@@ -330,13 +330,8 @@ class ProxyHandler:
     # Check on waiting reverse proxies to see if connection still open
     def poll_reverse_connections(self, timeout=0.2, wait_time=1):
 
-        # TODO: this would be a good place to track connection info in like self.reverse_connections
-        # Use dictionary w/ IP address as key and # of connections as value. 
-        # Requires value tracking port # or id to prevent double-counting
+        # Track connections (value is a set())
         self.reverse_connections = dict()
-
-        # Value type for self.reverse_connections. Count will be int, socket_ids will be set
-        ReverseHost = collections.namedtuple('ReverseHost', ['count', 'socket_ids'])
 
         # TODO: what's the in/out pattern for Queue? Don't want to just check on same sock over and over
         # But also, this should still work even if it did. Just not ideal
@@ -364,12 +359,11 @@ class ProxyHandler:
                 if len(data) == 0:
                     # Remove socket (and possibly host) from reverse_connections
                     if self.reverse_connections.get(address, False):
-                        self.reverse_connections[address].socket_ids.remove(sock_id)
-                        self.reverse_connections[address].count -= 1
+                        self.reverse_connections[address].remove(sock_id)
                         logger.debug("[-] Connection to {}:{} closed".format(address, port))
 
                         # Remove host if there are no remaining connections
-                        if self.reverse_connections[address].count == 0:
+                        if len(self.reverse_connections[address]) == 0:
                             del self.reverse_connections[address]
                             logger.info("[-] Reverse proxy lost: {}".format(address))
 
@@ -384,17 +378,13 @@ class ProxyHandler:
                 
                 # If address is known
                 if self.reverse_connections.get(address, False):
-                    if sock_id not in self.reverse_connections[address].socket_ids:
-                        # socket/connection is new
-                        self.reverse_connections[address].socket_ids.add(sock_id)
-                        self.reverse_connections[address].count += 1
+                    if sock_id not in self.reverse_connections[address]:
+                        self.reverse_connections[address].add(sock_id)
                 # Address is new
                 else:
                     logger.info("[+] New reverse proxy: {}".format(address))
-                    reverse_host = ReverseHost(count=1, socket_ids=set())
-                    reverse_host.count = 1
-                    reverse_host.socket_ids.add(sock_id)
-                    self.reverse_connections[address] = reverse_host
+                    self.reverse_connections[address] = set()
+                    self.reverse_connections[address].add(sock_id)
 
                 # Set timeout to original value, put back in queue
                 reverse_sock.settimeout(old_timeout)

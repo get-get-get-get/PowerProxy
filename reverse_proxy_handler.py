@@ -17,6 +17,11 @@ class ProxyHandler:
 
     shutdown_flag = threading.Event()
 
+    # SSL/TLS (for connection w/ remote proxies)
+    ssl_context = None
+    # Paths to cert files
+    ssl_cert = None
+    ssl_key = None
 
     def __init__(self, proxy_addr, proxy_port, listen_addr, listen_port):
 
@@ -28,12 +33,6 @@ class ProxyHandler:
         self.reverse_address = listen_addr
         self.reverse_port = int(listen_port)
         self.reverse_listener_sock = None
-
-        # SSL/TLS (for connection w/ remote proxies)
-        self.ssl_context = None
-        # Paths to cert files
-        self.ssl_cert = None
-        self.ssl_key = None
 
         # Active connections to remote proxies (sockets)
         self.reverse_sockets = queue.Queue()

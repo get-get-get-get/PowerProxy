@@ -235,7 +235,6 @@ function Start-ReverseSocksProxy {
                     #$Worker.Powershell.EndInvoke($Worker.AsyncResult)
                 }
                 [Console]::TreatControlCAsInput = $False
-                _Exit-Script -HardExit $True
             }
             # Flush the key buffer again for the next loop.
             $Host.UI.RawUI.FlushInputBuffer()
@@ -243,11 +242,8 @@ function Start-ReverseSocksProxy {
         
     }
 
-    # Process results or something
-    foreach ($Worker in $Workers) {
-        $Worker.Powershell.EndInvoke($Worker.AsyncResult)
-        [Console]::TreatControlCAsInput = $False
-    }
+    [Console]::TreatControlCAsInput = $False
+
 }   
 
 
@@ -535,7 +531,7 @@ function Connect-TcpStreams {
     $AsyncCopyResult_A.AsyncWaitHandle.WaitOne()
     $AsyncCopyResult_B.AsyncWaitHandle.WaitOne()
     Write-Host "Forwarding complete!"
-
+    return
 }
 
 function Invoke-ReverseProxyWorker {
@@ -714,16 +710,28 @@ function Invoke-ReverseProxyWorker {
             [byte[]] $Alert = ( $messages | ForEach-Object { $_.bytes[0] } )
             # Buffer to read into
             $Buffer = New-Object System.Byte[] 4
+
+            # Set timeout
+            $OldTimeout = $ClientStream.ReadTimeout
+            $ClientStream.ReadTimeout = 500
+
             while ($true) {
                 # Question: if you read from a socket that's "empty", how is that represented
                 # Also, what if message is split between reads??? e.g. "00WA" "KE00"
 
                 # Read a byte at a time
-                $ClientStream.Read($Buffer, 0, 1)
+                try {
+                    $ClientStream.Read($Buffer, 0, 1)
+                }
+                catch [System.IO.IOException] {
+                   continue
+                }
                 
                 # If byte matches start of a message, test if it's a message
                 if ($Buffer[0] -in $Alert) {
                     
+                    $ClientStream.ReadTimeout = $OldTimeout
+
                     # Read rest of message
                     $ClientStream.Read($Buffer, 1, 3)
 
@@ -888,9 +896,7 @@ function Read-SocksRequest {
 
     # Socks version
     $Version = $Buffer[0]
-    Write-Host "Client requests Socks version $Version"
-    
-
+  
     if ($Version -eq 4) {
         # Read request 
         $SocksRequest = Read-Socks4Request $ClientStream

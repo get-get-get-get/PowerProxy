@@ -92,7 +92,7 @@ function Start-ReverseSocksProxy {
         [Parameter(ValueFromPipelineByPropertyName = $true)]
         [Alias('Retries', 'MaxRetries', 'MaxRetry')]
         [int]
-        $MaximumRetries = 20,
+        $MaximumRetries = 10,
 
         [Parameter(ValueFromPipelineByPropertyName = $true)]
         [Alias('MaxConnections', 'MaximumConnections', 'Threads')]
@@ -555,6 +555,8 @@ function Invoke-ReverseProxyWorker {
     Tunnel via default system proxy. 
     .PARAMETER Certificate
     Validate remote certificate matches given fingerprint.
+    .PARAMETER MaximumRetries
+    Attempt to connect this many times before quiting
     .PARAMETER WaitBeforeRetry
     Seconds to wait after failed connection before trying again.
     .PARAMETER NoEncryption
@@ -592,6 +594,11 @@ function Invoke-ReverseProxyWorker {
         [Alias('USERPASS', 'SocksCredential')]
         [pscredential]
         $Credential,
+
+        [Parameter(ValueFromPipelineByPropertyName = $true)]
+        [Alias('Retries', 'MaxRetries', 'MaxRetry')]
+        [int]
+        $MaximumRetries = 20,
 
         [Parameter(ValueFromPipelineByPropertyName = $true)]
         [Alias('UseSystemProxy')]
@@ -655,31 +662,44 @@ function Invoke-ReverseProxyWorker {
 
     $Messages = $WakeMessage, $KillMessage
 
-    
+    $ConnectFailures = 0
 
     # 2. Connection loop
     while ($true) {
 
         # SNIPPET: connection flow
         try {
-
-            #Write-Verbose "Connecting to $RemoteHost..."
-            # Handle $SytemProxy option 
-            if ($SystemProxy -eq $false) {
-                $Client = New-Object System.Net.Sockets.TcpClient($RemoteHost, $RemotePort)
-                $ClientStream_Clear = $Client.GetStream()
+            
+            # Try to connect
+            try {
+                # Handle $SystemProxy option 
+                if ($SystemProxy -eq $false) {
+                    $Client = New-Object System.Net.Sockets.TcpClient($RemoteHost, $RemotePort)
+                    $ClientStream_Clear = $Client.GetStream()
+                }
+                else {
+                    $ret = Get-SystemProxy -RemoteHost $RemoteHost -RemotePort $RemotePort
+                    $Client = $ret[0]
+                    $ClientStream_Clear = $ret[1]
+                }
+                
+                # Reset counter
+                $ConnectFailures = 0
             }
-            else {
-                $ret = Get-SystemProxy -RemoteHost $RemoteHost -RemotePort $RemotePort
-                $Client = $ret[0]
-                $ClientStream_Clear = $ret[1]
+            catch {
+                if ($ConnectFailures -eq 0) {
+                    Write-Warning "[!] Connection to remote host fucking failed! :)"
+                }
+                $ConnectFailures++
+                if ($ConnectFailures -ge $MaximumRetries) {
+                    Write-Warning "[!] Connection failures maxed out! Exiting"
+                    return
+                }
+                Write-Verbose "$($MaximumRetries - $ConnectFailures) connection attempts remain"
+                Start-Sleep $WaitBeforeRetry
+                continue
             }
             
-            # Connect to remote host (no SSL yet)
-            if ($client.connected -eq $False) {
-                Write-Warning "[!] Connection to remote host fucking failed! :)"
-            }
-
             # SSL - handle certificate verification options
             if ($NoEncryption) {
                 $ClientStream = $ClientStream_Clear
@@ -700,7 +720,7 @@ function Invoke-ReverseProxyWorker {
                     Write-Verbose "[+] Connected to $RemoteHost`:$RemotePort"
                 }
                 else {
-                    Write-Host "[!] Encryption failed!"
+                    Write-Error "[!] Encryption failed!"
                 }
                 
             }
@@ -770,15 +790,19 @@ function Invoke-ReverseProxyWorker {
 
         }
         catch {
-            Write-Verbose "[!] ERROR in ReverseProxyWorker: $($_.Exception.Message)"
-            # throw $_
+            # Write-Verbose "[!] ERROR in ReverseProxyWorker: $($_.Exception.Message)"
+            throw $_
             # TODO: report to master thread
             # TODO: handle exception, probably just pass
         }
         finally {
             # Note: figure out the flow/order of shutting this down
+            if ($Client.connected -eq $True) {
+                Write-Verbose "[-] Closed connection to $RemoteHost"
+            }
+            $ClientStream.close()
             $Client.Close()
-            Write-Verbose "[-] Closed connection to $RemoteHost"
+
         }
 
     }

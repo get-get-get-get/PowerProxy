@@ -183,11 +183,9 @@ function Start-ReverseSocksProxy {
     $WorkerVariable = New-Object System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList 'WorkerArgs', $WorkerArgs, $null
     $InitialSessionState.Variables.Add($WorkerVariable)
     
-
     # Create runspacepool
     $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $Connections, $InitialSessionState, $Host)
     $RunspacePool.Open()
-
 
     ###### 3. Start threads, add to workers array
     
@@ -204,7 +202,7 @@ function Start-ReverseSocksProxy {
 
         # Invoke and store as psobject
         $Worker = new-object psobject -Property @{
-            Powershell = $PowerShell
+            Powershell  = $PowerShell
             AsyncResult = $PowerShell.BeginInvoke()
         }
 
@@ -744,7 +742,7 @@ function Invoke-ReverseProxyWorker {
                     $ClientStream.Read($Buffer, 0, 1)
                 }
                 catch [System.IO.IOException] {
-                   continue
+                    continue
                 }
                 
                 # If byte matches start of a message, test if it's a message

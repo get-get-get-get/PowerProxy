@@ -74,6 +74,13 @@ class ProxyHandler:
         signal.signal(signal.SIGINT, self.sig_handler)
         signal.signal(signal.SIGTERM, self.sig_handler)
 
+        # Start thread tracking connections
+        connection_poller_t = threading.Thread(
+            target=self.poll_reverse_connections,
+            name="connection_poller"
+        )
+        connection_poller_t.start()
+
         if not self.ssl_context:
             logger.warning("[!] WARNING: SSL context not set. Connections to reverse proxies will not be encrypted!")
 
@@ -174,9 +181,6 @@ class ProxyHandler:
         # Start listening
         listen_socket.listen(backlog)
 
-        # Track known reverse machines
-        known_connections = set()
-
         while not self.shutdown_flag.is_set():
 
             # Accept connection, not yet encrypted
@@ -190,26 +194,16 @@ class ProxyHandler:
                 else:
                     raise
 
-
-                    
-            logger.debug(
-                "[+] New reverse connection from {}:{}".format(address[0], address[1]))
-
             # Encrypt connection
             if self.ssl_context:
                 reverse_socket = self.ssl_context.wrap_socket(
                     clear_socket, server_side=True)
-                logger.debug("Encrypted connection with {}".format(address))
+                logger.debug("[&] Encrypted connection with {}".format(address))
             else:
                 reverse_socket = clear_socket
 
             # Store socket for use with client later
             self.reverse_sockets.put(reverse_socket)
-
-            # Announce connection if new remote address
-            if address[0] not in known_connections:
-                known_connections.add(address[0])
-                logger.info("[+] New reverse proxy: {}".format(address[0]))
 
     # Listen for proxy clients
     def listen_for_client(self, srv_sock, backlog=10):
@@ -383,6 +377,7 @@ class ProxyHandler:
                         self.reverse_connections[address].count += 1
                 # Address is new
                 else:
+                    logger.info("[+] New reverse proxy: {}".format(address))
                     reverse_host = ReverseHost(count=1, socket_ids=set())
                     reverse_host.socket_ids.add(id(reverse_sock))
                     self.reverse_connections[address] = reverse_host
@@ -391,8 +386,6 @@ class ProxyHandler:
                 reverse_sock.settimeout(old_timeout)
                 self.reverse_sockets.put(reverse_sock)
 
-                
-        
         return
 
     # Send 'WAKE' message to waiting reverse proxy. Return reply message

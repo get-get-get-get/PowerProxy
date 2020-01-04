@@ -492,46 +492,6 @@ function Start-SocksProxy {
 # MISC
 #####
 
-function Connect-TcpStreams {
-    <#
-    .SYNOPSIS
-    Forward TCP traffic after SOCKS connection started
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER TcpStreamA
-    [System.Net.Sockets.NetworkStream]
-    .PARAMETER TcpStreamB
-    [System.Net.Sockets.NetworkStream] 
-    #>
-    [Alias('Forward-TcpStreams')]
-
-    [CMDletBinding()]
-
-    param (
-        # Client TCP stream
-        [Parameter(Mandatory = $True, Position = 0, ValueFromPipelineByPropertyName = $true)]
-        $ClientStream,
-
-        # TODO: figure out type to list here, or just don't put type.
-        [Parameter(Mandatory = $True, Position = 1, ValueFromPipelineByPropertyName = $true)]
-        $TargetStream
-    )
-
-    # Client/Destinations Streams are asynchronously copied
-    $AsyncCopyResult_A = $ClientStream.CopyToAsync($TargetStream)
-    $AsyncCopyResult_B = $TargetStream.CopyToAsync($ClientStream)
-
-    # Wait for each copy to complete
-    # TODO: fix issue where this never finishes, even though client closes connection
-    # Issue is that the Python handler isn't checking connection status
-    $AsyncCopyResult_A.AsyncWaitHandle.WaitOne()
-    $AsyncCopyResult_B.AsyncWaitHandle.WaitOne()
-    Write-Host "Forwarding complete!"
-    return
-}
-
 function Invoke-ReverseProxyWorker {
     <#
     .SYNOPSIS
@@ -806,6 +766,48 @@ function Invoke-ReverseProxyWorker {
     }
     
 }
+
+function Connect-TcpStreams {
+    <#
+    .SYNOPSIS
+    Forward TCP traffic after SOCKS connection started
+    .DESCRIPTION
+    TODO
+    .EXAMPLE
+
+    .PARAMETER TcpStreamA
+    [System.Net.Sockets.NetworkStream]
+    .PARAMETER TcpStreamB
+    [System.Net.Sockets.NetworkStream] 
+    #>
+    [Alias('Forward-TcpStreams')]
+
+    [CMDletBinding()]
+
+    param (
+        # Client TCP stream
+        [Parameter(Mandatory = $True, Position = 0, ValueFromPipelineByPropertyName = $true)]
+        $ClientStream,
+
+        # TODO: figure out type to list here, or just don't put type.
+        [Parameter(Mandatory = $True, Position = 1, ValueFromPipelineByPropertyName = $true)]
+        $TargetStream
+    )
+
+    # Client/Destinations Streams are asynchronously copied
+    $AsyncCopyResult_A = $ClientStream.CopyToAsync($TargetStream)
+    $AsyncCopyResult_B = $TargetStream.CopyToAsync($ClientStream)
+
+    # Wait for each copy to complete
+    # TODO: fix issue where this never finishes, even though client closes connection
+    # Issue is that the Python handler isn't checking connection status
+    $AsyncCopyResult_A.AsyncWaitHandle.WaitOne()
+    $AsyncCopyResult_B.AsyncWaitHandle.WaitOne()
+    Write-Host "[x] Proxy job complete"
+    return
+}
+
+
 
 
 ##########

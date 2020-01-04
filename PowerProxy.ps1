@@ -739,7 +739,7 @@ function Invoke-ReverseProxyWorker {
                         # If it's a message, send the reply and take the action
                         if ((Compare-Object $key.bytes $buffer -SyncWindow 0).length -eq 0) {
                             $Message = $key.Message
-                            Write-Verbose "RECEIVED MESSAGE: '$($key.Message)'"
+                            Write-Verbose "Received message from handler: '$($key.Message)'"
 
                             # NOTE: apparently NetworkStream is not buffered and doesn't need flush()
                             # but SSLStream seems to implement it, and maybe needs flush()
@@ -754,7 +754,6 @@ function Invoke-ReverseProxyWorker {
                     if ($Message) {
                         if ($Message -eq "WAKE") {
                             $ProxyArgs | Start-SocksProxyConnection $ClientStream -Verbose:$ProxyArgs.Verbose
-                            Write-Host "Finished proxying, now in worker"
                             break
                         }
                         elseif ($Message -eq "KILL") {
@@ -766,7 +765,7 @@ function Invoke-ReverseProxyWorker {
 
             # Connection complete
             $Clientstream.Close()
-            $Client.close()
+            $Client.Close()
             Write-Verbose "[-] Job complete, connection to $RemoteHost closed"
 
         }
@@ -982,12 +981,11 @@ function Write-SocksResponse {
     # $ContextArgs = $PSBoundParameters
 
     if ($Version -eq 4) {
-        Write-Host "Creating Socks4 response"
         # Testing by remove reject param
         Write-Socks4Response -ClientStream $ClientStream -DestinationAddress $DestinationAddress -DestinationPort $DestinationPort -Reject:$Reject
     }
     else {
-        Write-Host "Sending Socks5 response"
+        Write-Host "Sending Socks5 response (will fuck up apparently)"
         # NOTE: this will fuck up
         $ContextArgs | Write-Socks5Response
     }

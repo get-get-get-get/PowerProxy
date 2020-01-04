@@ -749,6 +749,7 @@ function Invoke-ReverseProxyWorker {
                             
                             if ($key.message -eq "WAKE") {
                                 $ProxyArgs | Start-SocksProxyConnection $ClientStream -Verbose:$ProxyArgs.Verbose
+                                break
                             }
                             elseif ($key.message -eq "KILL") {
                                 Send-KillChain                  # TODO
@@ -862,6 +863,7 @@ function Start-SocksProxyConnection {
 
     # Start Forwarding
     Connect-TcpStreams $ClientStream $ProxyDestinationStream
+    return
 }
 
 

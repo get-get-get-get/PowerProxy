@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import collections
 import logging
 import logging.handlers
 import os
@@ -340,6 +341,9 @@ class ProxyHandler:
         # Requires value tracking port # or id to prevent double-counting
         self.reverse_connections = dict()
 
+        # Value type for self.reverse_connections. Count will be int, socket_ids will be set
+        ReverseHost = collections.namedtuple('ReverseHost', ['count', 'socket_ids'])
+
         # TODO: what's the in/out pattern for Queue? Don't want to just check on same sock over and over
         # But also, this should still work even if it did. Just not ideal
          
@@ -367,8 +371,27 @@ class ProxyHandler:
 
             # timeout will happen if connection still open
             except socket.timeout:
+
+                # Socket is valid, so track in self.reverse_connections
+                address = reverse_sock.getpeername()[0]
+                # If address is known
+                if self.reverse_connections.get(address, False):
+                    sock_id = id(reverse_sock)
+                    if sock_id not in self.reverse_connections[address].socket_ids:
+                        # socket/connection is new
+                        self.reverse_connections[address].socket_ids.add(sock_id)
+                        self.reverse_connections[address].count += 1
+                # Address is new
+                else:
+                    reverse_host = ReverseHost(count=1, socket_ids=set())
+                    reverse_host.socket_ids.add(id(reverse_sock))
+                    self.reverse_connections[address] = reverse_host
+
+                # Set timeout to original value, put back in queue
                 reverse_sock.settimeout(old_timeout)
                 self.reverse_sockets.put(reverse_sock)
+
+                
         
         return
 

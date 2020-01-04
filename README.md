@@ -40,7 +40,7 @@ curl --socks4 127.0.0.1:1080 http://10.10.2.69/
 
 ### **Run a traditional SOCKS server** 
 ```powershell
-Start-SocksProxy Start-SocksProxy 172.10.2.20 -Port 9050
+Start-SocksProxy 172.10.2.20 -Port 9050
 ```
 
 ### Require authentication

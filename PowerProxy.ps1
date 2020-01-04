@@ -765,7 +765,7 @@ function Invoke-ReverseProxyWorker {
             }
 
             # Connection complete
-            $Clientstream.Close(1)
+            $Clientstream.Close()
             $Client.close()
             Write-Verbose "[-] Job complete, connection to $RemoteHost closed"
 

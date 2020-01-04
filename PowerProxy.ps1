@@ -734,10 +734,11 @@ function Invoke-ReverseProxyWorker {
 
                     # Read rest of message
                     $ClientStream.Read($Buffer, 1, 3)
-
+                    # Check if message matches action
                     foreach ($key in $messages) {
                         # If it's a message, send the reply and take the action
                         if ((Compare-Object $key.bytes $buffer -SyncWindow 0).length -eq 0) {
+                            $Message = $key.Message
                             Write-Verbose "RECEIVED MESSAGE: '$($key.Message)'"
 
                             # NOTE: apparently NetworkStream is not buffered and doesn't need flush()
@@ -746,18 +747,27 @@ function Invoke-ReverseProxyWorker {
                             $ClientStream.Write($Buffer, 0, $Buffer.length)
                             $ClientStream.Flush()
                             $Buffer = New-Object System.Byte[] 4
-                            
-                            if ($key.message -eq "WAKE") {
-                                $ProxyArgs | Start-SocksProxyConnection $ClientStream -Verbose:$ProxyArgs.Verbose
-                                break
-                            }
-                            elseif ($key.message -eq "KILL") {
-                                Send-KillChain                  # TODO
-                            }
+                        }
+                    }
+
+                    # Do the action then 
+                    if ($Message) {
+                        if ($Message -eq "WAKE") {
+                            $ProxyArgs | Start-SocksProxyConnection $ClientStream -Verbose:$ProxyArgs.Verbose
+                            Write-Host "Finished proxying, now in worker"
+                            break
+                        }
+                        elseif ($Message -eq "KILL") {
+                            Send-KillChain                  # TODO
                         }
                     }
                 }
             }
+
+            # Connection complete
+            $Clientstream.Close(1)
+            $Client.close()
+            Write-Verbose "[-] Job complete, connection to $RemoteHost closed"
 
         }
         catch {

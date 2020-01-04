@@ -359,7 +359,7 @@ class ProxyHandler:
                     # Remove socket (and possibly host) from reverse_connections
                     if self.reverse_connections.get(address, False):
                         self.reverse_connections[address].remove(sock_id)
-                        logger.debug("[-] Connection to {}:{} closed".format(address, port))
+                        logger.debug("[-] Connection lost: {}:{}".format(address, port))
 
                         # Remove host if there are no remaining connections
                         if len(self.reverse_connections[address]) == 0:
@@ -372,12 +372,11 @@ class ProxyHandler:
  
             # timeout will happen if connection still open
             except socket.timeout:
-
-                # Socket is valid, so track in self.reverse_connections
                 
                 # If address is known
                 if self.reverse_connections.get(address, False):
                     if sock_id not in self.reverse_connections[address]:
+                        logger.debug("[+] Connection added: {}:{}".format(address, port))
                         self.reverse_connections[address].add(sock_id)
                 # Address is new
                 else:

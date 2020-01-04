@@ -278,7 +278,10 @@ class ProxyHandler:
                     if len(data) != 0:
                         client_socket.sendall(data)
                     else:
-                        logger.error("[!] Reverse proxy may have disconnected!")
+                        logger.error("[!] Reverse proxy disconnected while forwarding!")
+                        client_socket.close()
+                        reverse_socket.close()
+                        return
 
                 if sock is client_socket:
                     data = b''
@@ -300,7 +303,7 @@ class ProxyHandler:
                         reverse_socket.sendall(data)
                     else:
                         # Connection is closed
-                        logger.debug("[x] Forwarding for client {} complete".format(client_addr))
+                        logger.debug("[x] Closing connection to client {}. Forwarding complete".format(client_addr))
                         client_socket.close()
                         reverse_socket.close()
                         return

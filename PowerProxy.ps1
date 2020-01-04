@@ -211,7 +211,7 @@ function Start-ReverseSocksProxy {
         # Add to array
         $Workers[$i] = $Worker
     }
-    Write-Verbose "Spawned $Connections workers"
+    Write-Host "Opening $Connections connections to handler at $RemoteHost"
 
     ##### 6. Monitor threads
 
@@ -748,8 +748,8 @@ function Invoke-ReverseProxyWorker {
 
         }
         catch {
-            # Write-Verbose "[!] ERROR in ReverseProxyWorker: $($_.Exception.Message)"
-            throw $_
+            Write-Verbose "[!] ERROR in ReverseProxyWorker: $($_.Exception.Message)"
+            #throw $_
             # TODO: report to master thread
             # TODO: handle exception, probably just pass
         }
@@ -803,11 +803,9 @@ function Connect-TcpStreams {
     # Issue is that the Python handler isn't checking connection status
     $AsyncCopyResult_A.AsyncWaitHandle.WaitOne()
     $AsyncCopyResult_B.AsyncWaitHandle.WaitOne()
-    Write-Host "[x] Proxy job complete"
+    Write-Host "[x] Tunneling complete"
     return
 }
-
-
 
 
 ##########
@@ -880,7 +878,7 @@ function Start-SocksProxyConnection {
     }
         
     # Otherwise, connect to destination and send response accepting request
-    Write-Verbose "[_] Proxying to $($SocksRequest.DestinationAddress)`:$($SocksRequest.DestinationPort)"
+    Write-Verbose "[_] Tunneling client to $($SocksRequest.DestinationAddress)`:$($SocksRequest.DestinationPort)"
     $ProxyDestination = New-Object System.Net.Sockets.TcpClient($SocksRequest.DestinationAddress, $SocksRequest.DestinationPort)
     if ($ProxyDestination.Connected) {
         $SocksRequest | Write-SocksResponse $ClientStream
@@ -1222,12 +1220,11 @@ function Start-Socks5Negotiation {
 
         # Do method-specific negotiation
         if ($ChosenMethod -eq "USERPASS") {
-            $AuthenticationStatus = Confirm-Socks5UserPass $ClientStream -Credential $Credential
-            Write-Host "Authentication Status: $AuthenticationStatus"
-
+            Confirm-Socks5UserPass $ClientStream -Credential $Credential           
         }
         elseif ($ChosenMethod -eq "GSSAPI") {
             write-host "how did u get here"
+            return
         }
         else {
 
@@ -1256,10 +1253,31 @@ function Start-Socks5Negotiation {
     
     #>
 
+    Write-Host "Reading Socks5 request"
     # Read actual Socks5 request. Expect object shown above
     $SocksRequest = Read-Socks5Request $ClientStream
+    write-host "$SocksRequest"
 
+    #### connect to target
+    if ($SocksRequest.Command -eq "CONNECT") {
+        # TODO: actually do this instead of just copy/paste
+        Write-Verbose "[_] Tunneling client to $($SocksRequest.DestinationAddress)`:$($SocksRequest.DestinationPort)"
+        $ProxyDestination = New-Object System.Net.Sockets.TcpClient($SocksRequest.DestinationAddress, $SocksRequest.DestinationPort)
+        if ($ProxyDestination.Connected) {
+            Write-Host "Connected to target"
+            $SocksRequest | Write-Socks5Response $ClientStream
+        }
+    }
+    else {
+        write-host "not ready yet"
+    }
 
+    ### CONNECT STREAMS
+    $ProxyDestinationStream = $ProxyDestination.GetStream()
+
+    # Start Forwarding
+    Connect-TcpStreams $ClientStream $ProxyDestinationStream
+    return
 }
 
 
@@ -1456,7 +1474,7 @@ function Confirm-Socks5UserPass {
     }
     
     ##### RESPOND
-    $Buffer = byte[] 2
+    $Buffer = new-object byte[] 2
     $Buffer[0] = 1          # VER - subnegotiation version
     $Buffer[1] = 1          # Default fail
 
@@ -1466,39 +1484,14 @@ function Confirm-Socks5UserPass {
 
     $ClientStream.Write($Buffer, 0, $Buffer.Length)
     $ClientStream.Flush()
+    Write-Host "Sent USERPASS response"
 
     # Immediately close connection if auth failed
     if ($ValidAuthentication -eq $false) {
         $ClientStream.Close()
         Write-Verbose "[-] Closed connected to unauthorized client"
-        return
     }
-}
-
-function Write-Socks5UserPassResponse {
     
-    [CMDletBinding()]
-
-    param (
-        [Parameter(Mandatory = $True, Position = 0, ValueFromPipelineByPropertyName = $true)]
-        $ClientStream,
-    
-        [Parameter(ValueFromPipelineByPropertyName = $true)]
-        [switch]
-        $Reject
-    )
-
-    $Buffer = byte[] 2
-
-    $Buffer[0] = 1          # VER - subnegotiation version
-    $Buffer[1] = 0          # STATUS - 0 is success
-    if ($Reject) {
-        $Buffer[1] = 2      # fail is anything by 0 (TODO: must immediately close connection)
-    }
-
-    Write-Host "Sending UserPass response: $Buffer"
-    $ClientStream.Write($Buffer, 0, $Buffer.length)
-    $ClientStream.Flush()
 }
 
 
@@ -1524,8 +1517,9 @@ function Read-Socks5Request {
 
     )
     
+    write-host "in read-socks5request"
     $Buffer = new-object system.Byte[] 32
-    $ClientStream.Read($Buffer, 0, 4)
+    $ClientStream.Read($Buffer, 0, 4) | Out-Null
 
     $Version = $Buffer[0]
     
@@ -1545,26 +1539,30 @@ function Read-Socks5Request {
 
     # Read DST.ADDR
     if ($AddressType -eq "DN") {
-        $ClientStream.Read($Buffer, 0, 1)
+        $ClientStream.Read($Buffer, 0, 1) | Out-Null
         $NameLength = $Buffer[0]
-        $ClientStream.Read($Buffer, 0, $NameLength)
+        $ClientStream.Read($Buffer, 0, $NameLength) | Out-Null
         
         $DestDN = Convert-BytesToString $Buffer[0..($NameLength - 1)]
         $DestAddress = Resolve-DomainName $DestDN
     }
     elseif ($AddressType -eq "IPv4") {
-        $ClientStream.Read($Buffer, 0, 4)
-        $DestAddress = $System.Net.IPAddress($Buffer[0..3])
+
+        $ClientStream.Read($Buffer, 0, 4) | Out-Null
+        write-host "$buffer"
+        $DestAddress = New-Object System.Net.IPAddress(, $Buffer[0..3])
+        Write-Host "Requested address: $($DestAddress.IpAddressToString)"
     }
     else {
-        $ClientStream.Read($Buffer, 0, 16)
-        $DestAddress = $System.Net.IPAddress($Buffer[0..15])
+        $ClientStream.Read($Buffer, 0, 16) | Out-Null
+        $DestAddress = New-Object System.Net.IPAddress(, $Buffer[0..15])
     }
 
     # Read DST.PORT
-    $ClientStream.Read($Buffer, 0, 2)
-    $DestPort = Convert-BytesToInt $Buffer[0..1]
+    $ClientStream.Read($Buffer, 0, 2) | Out-Null
+    $DestPort = ($Buffer[0] * 256) + $Buffer[1]
 
+    write-host "destport: $DestPort"
     $Socks5Request = New-object psobject -Property @{
         ClientStream           = $ClientStream
         Version                = $Version
@@ -1574,7 +1572,8 @@ function Read-Socks5Request {
         DestinationDomainName  = $DestDN
         DestinationAddressType = $AddressType
     }
-    return $Socks5Request
+
+    $Socks5Request
 }
 
 function Write-Socks5Response {
@@ -1587,6 +1586,8 @@ function Write-Socks5Response {
 
     .PARAMETER ClientStream
     NetStream object representing client connection
+    .PARAMETER BoundAddressType
+    TODO
     .PARAMETER BoundAddress
     TODO
     .PARAMETER BoundPort
@@ -1602,36 +1603,57 @@ function Write-Socks5Response {
         $ClientStream,
 
         [Parameter(ValueFromPipelineByPropertyName = $true)]
+        [string]
+        $BoundAddressType = "IPv4",
+
+        [Parameter(ValueFromPipelineByPropertyName = $true)]
+        [System.Net.IPAddress]
+        $BoundAddress = [System.Net.IpAddress]::Parse("127.0.0.1"),
+
+        [Parameter(ValueFromPipelineByPropertyName = $true)]
+        [int]
+        $BoundPort = 49985,
+
+
+        [Parameter(ValueFromPipelineByPropertyName = $true)]
         [bool]
         $Reject = $false
     )
 
-    $Version = 5
+    # Make buffer for fixed length fields
+    $Buffer = New-Object System.Byte[] 4
+
+    # First field is version
+    $Buffer[0] = 5
+    # Second field is status
     if ($Reject) {
-        $ReplyCode = 1
+        $Buffer[1] = 1
     }
     else {
-        $ReplyCode = 0
+        $Buffer[1] = 0
     }
-    $BoundAddressType = 1       # IPv4 (I don't think this matters)
-    $BoundAddress = [System.Net.IpAddress]::Parse("127.0.0.1").getbytes   # Don't think this matters
-    $BoundPort = Convert-IntToBytes 42899 -Size 2                         # Don't think this matters, picked random
-    
-    # Make buffer length of response message
-    $Buffer = New-Object System.Byte[] (5 + $BoundAddress.length)
-
-    # Write variables to buffer, with 2nd byte being a reserved field
-    $Buffer[0] = $Version
-    $Buffer[1] = $ReplyCode
-    $Buffer[3] = $BoundAddressType
-    # Write address to buffer
-    for ($i = 0; $i -le $BoundAddress.length; $i++) {
-        $Buffer[($i + 4)] = $BoundAddress[$i]
+    # Fourth Field is address type (third field is reserved)
+    if ($BoundAddressType -eq "IPv4") {
+        $Buffer[3] = 1
+        $AddressBuffer = $BoundAddress.getaddressbytes()
     }
-    # Write port to buffer
-    $Buffer[-2] = $BoundPort[0]
-    $Buffer[-1] = $BoundPort[1]
+    elseif ($BoundAddressType -eq "DN") {
+        $Buffer[3] = 3
+        $AddressBuffer = new-object byte[] 4        # TODO get right
+    }
+    elseif ($BoundAddressType -eq "IPv6") {
+        $Buffer[3] = 1
+        $AddressBuffer = $BoundAddress.getaddressbytes()
+    }
+    write-host "address: $ADDRESSBUFFER"
+    # Add buffer and addressbuffer
+    [byte[]] $Buffer += $AddressBuffer
+    write-host "buffer + addressbuffer = $buffer"
 
+    # Last field is port (2 bytes)
+    [byte[]] $Buffer += (Convert-IntToBytes $BoundPort -Size 2)
+
+    Write-Host "Prepared response: $Buffer"
     # Send response
     $ClientStream.Write($Buffer, 0, $Buffer.Length)
     $ClientStream.Flush()

@@ -461,10 +461,10 @@ if __name__ == '__main__':
         help="Port to listen for reverse proxies connecting"
     )
     parser.add_argument(
-        "-i",
+        "-a",
         "--reverse-address",
         default="",
-        help="IP address to listen for reverse proxies connecting"
+        help="Listen for reverse proxies on a specific address"
     )
     # Listening for connections from SOCKS clients
     parser.add_argument(
@@ -475,7 +475,7 @@ if __name__ == '__main__':
         help="Port to listen for clients connecting"
     )
     parser.add_argument(
-        "-I",
+        "-A",
         "--client-address",
         default="127.0.0.1",
         help="IP address to listen for clients connecting"

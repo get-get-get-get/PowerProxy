@@ -332,6 +332,45 @@ class ProxyHandler:
         
         return reverse_socket
 
+    # Check on waiting reverse proxies to see if connection still open
+    def poll_reverse_connections(self, timeout=0.2, wait_time=1):
+
+        # TODO: this would be a good place to track connection info in like self.reverse_connections
+        # Use dictionary w/ IP address as key and # of connections as value. 
+        # Requires value tracking port # or id to prevent double-counting
+        self.reverse_connections = dict()
+
+        # TODO: what's the in/out pattern for Queue? Don't want to just check on same sock over and over
+        # But also, this should still work even if it did. Just not ideal
+         
+        while not (self.shutdown_flag.is_set()):
+
+            if self.reverse_sockets.empty():
+                time.sleep(wait_time)
+                continue
+            
+            # Get a connection to check on
+            reverse_sock = self.reverse_sockets.get()
+
+            # store current timeout setting
+            old_timeout = reverse_sock.gettimeout()
+            # set timeout to something short
+            reverse_sock.settimeout(timeout)
+
+            try:
+                data = reverse_sock.recv(2048)
+
+                # Means connection closed
+                if len(data) == 0:
+                    logger.debug("[-] Connection from TODO closed")
+                    # Whatever here
+
+            # timeout will happen if connection still open
+            except socket.timeout:
+                reverse_sock.settimeout(old_timeout)
+                self.reverse_sockets.put(reverse_sock)
+        
+        return
 
     # Send 'WAKE' message to waiting reverse proxy. Return reply message
     def wake_reverse(self, reverse_sock, max_attempts=5):

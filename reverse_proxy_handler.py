@@ -509,7 +509,7 @@ def create_ssl_cert(cert_path=None, key_path=None, temporary=True):
     
     # Now run OpenSSL
     openssl = f"openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout {key_path} -out {cert_path} -batch"
-    openssl_result = subprocess.run(openssl.split(), capture_output=True)
+    openssl_result = subprocess.run(openssl.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     if openssl_result.returncode == 0:
         logger.debug("[&] SSL cert created successfully!")

@@ -346,7 +346,7 @@ function Start-SocksProxy {
         Verbose    = ($VerbosePreference -eq "CONTINUE")
     }
 
-    # Scriptblock
+    # Scriptblock (ClientStream arg added when connection is received)
     $ScriptBlock = {
         $WorkerArgs | Start-SocksProxyConnection -Verbose:$WorkerArgs.Verbose
     }
@@ -384,74 +384,100 @@ function Start-SocksProxy {
     # Let's also count total connections received
     $ConnectionCount = 0
 
+    # Create thread pool
+    $ThreadPool = [runspacefactory]::CreateRunspacePool(1, $Threads);
+    $ThreadPool.CleanupInterval = New-TimeSpan -Seconds 30;
+    $ThreadPool.open();
+
     try {
-        # Start listener
+
+        # TCP listener
         $SocksListener = new-object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Parse($BindAddress), $BindPort)
         $SocksListener.start()
 
-        # Create thread pool
-        $ThreadPool = [runspacefactory]::CreateRunspacePool(1, $Threads);
-        $ThreadPool.CleanupInterval = New-TimeSpan -Seconds 30;
-        $ThreadPool.open();
-
         Write-Host "Listening on $BindAddress`:$BindPort"
+
+        # Handle Ctrl-C
+        [Console]::TreatControlCAsInput = $True
+        Start-Sleep -Seconds 1              # Helps flush buffer
+        $Host.UI.RawUI.FlushInputBuffer()
 
         # Listen and serve
         while ($true) {
 
-            # Accept incoming connection
-            $Client = $SocksListener.AcceptTcpClient()
-            $ClientStream = $Client.GetStream()
-            Write-Verbose "[*] New Connection from " $Client.Client.RemoteEndPoint
-            $ConnectionCount++
+            # Check for pending connections (structured to avoid blocking)
+            if ($SocksListener.Pending() -eq $True) {
+                # Accept incoming connection
+                $Client = $SocksListener.AcceptTcpClient()
+                $ClientStream = $Client.GetStream()
+                Write-Host "[*] New Connection from $($Client.Client.RemoteEndPoint)"
+                $ConnectionCount++
 
-            if ($Encryption) {
-                Write-Verbose "[!] ERROR: I didn't do encryption stuff yet"
-                raise "Encryption bullshit"             # idk lol
-            }
-            
-            $PowerShell = [PowerShell]::Create()
-            $PowerShell.RunspacePool = $ThreadPool
-            # First attempt at adding ClientStream
-            $PowerShell.AddScript($ScriptBlock).AddArgument($ClientStream)
+                if ($Encryption) {
+                    Write-Verbose "[!] ERROR: I didn't do encryption stuff yet"
+                    raise "Encryption bullshit"             # idk lol
+                }
+                
+                $PowerShell = [PowerShell]::Create()
+                $PowerShell.RunspacePool = $ThreadPool
+                # First attempt at adding ClientStream
+                $PowerShell.AddScript($ScriptBlock).AddArgument($ClientStream)
 
-            # This'll do for now. Just make sure not overwriting worker
-            if ($Workers[$ThreadCount] -is [int]) {
-                $WorkersAsync[$ThreadCount] = $PowerShell.BeginInvoke()
-                $Workers[$ThreadCount] = $PowerShell
-                $ThreadCount++            # Increment thread count
-            }
-            else {
-                Write-Verbose "ThreadCount: $ThreadCount"
-                # Search for a spot that isn't used (lol prolly dumb)
-                for ($i = 0; $i -lt $ThreadCount; $i++) {
-                    if ($Workers[$i] -is [int]) {
-                        $ThreadCount = $i
-                        $WorkersAsync[$ThreadCount] = $PowerShell.BeginInvoke()
-                        $Workers[$ThreadCount] = $PowerShell
-                        break
+                # This'll do for now. Just make sure not overwriting worker
+                if ($Workers[$ThreadCount] -is [int]) {
+                    $WorkersAsync[$ThreadCount] = $PowerShell.BeginInvoke()
+                    $Workers[$ThreadCount] = $PowerShell
+                    $ThreadCount++            # Increment thread count
+                }
+                else {
+                    Write-Verbose "ThreadCount: $ThreadCount"
+                    # Search for a spot that isn't used (lol prolly dumb)
+                    for ($i = 0; $i -lt $ThreadCount; $i++) {
+                        if ($Workers[$i] -is [int]) {
+                            $ThreadCount = $i
+                            $WorkersAsync[$ThreadCount] = $PowerShell.BeginInvoke()
+                            $Workers[$ThreadCount] = $PowerShell
+                            break
+                        }
                     }
                 }
-            }
 
-            # TODO: If ThreadCount hits maximum, do something
-            if ($ThreadCount -ge $Threads) {
-                Write-Verbose "[!] ThreadCount maxed! Is something fucked?"
-                $ThreadCount = 0
+                # TODO: If ThreadCount hits maximum, do something
+                if ($ThreadCount -ge $Threads) {
+                    Write-Verbose "[!] ThreadCount maxed! Is something fucked?"
+                    $ThreadCount = 0
+                }
+                
+                Write-Verbose "Threads remaining: $($ThreadPool.GetAvailableRunspaces())" 
+            }
+            # Check for ctrl-c
+            else {
+                if ($Host.UI.RawUI.KeyAvailable -and ($Key = $Host.UI.RawUI.ReadKey("AllowCtrlC,NoEcho,IncludeKeyUp"))) {
+                    if ([Int]$Key.Character -eq 3) {
+                        Write-Host ""
+                        Write-Warning "CTRL-C detected - closing connections and exiting"
+                        [Console]::TreatControlCAsInput = $False
+                        break
+                    }
+                    # Flush the key buffer again for the next loop.
+                    $Host.UI.RawUI.FlushInputBuffer()
             }
             
-            Write-Verbose "Threads remaining: $($ThreadPool.GetAvailableRunspaces())" 
             
         }
     }
     catch {
-        throw $_
+        Write-Warning "Error in SOCKS listener:  $($_.Exception.Message)"
     }
     finally {
+
+        # Reset Ctrl-C handling to normal
+        [Console]::TreatControlCAsInput = $True
         
         Write-Verbose "Server closing..."
         Write-Host "Total connections received: $ConnectionCount"
 
+        # TODO: fix up this whole sequence
         $WorkerResults = @(1..$Threads)
         for ($i = 0; $i -lt $Threads; $i++) {
 
@@ -461,10 +487,7 @@ function Start-SocksProxy {
             }
             
             $Worker = $Workers[$i]
-            $WorkerResults[$i] = $Worker.EndInvoke($WorkersAsync[$i])
-
-            Write-Host "$($WorkerResults[$i])"
-
+            $Worker.dispose()
         }
 
         if ($null -ne $PowerShell -and $null -ne $AsyncJobResult3) {
@@ -483,8 +506,7 @@ function Start-SocksProxy {
         }
 
         Write-Host "[-] Server closed"
-        
-        
+
     }
 }
 

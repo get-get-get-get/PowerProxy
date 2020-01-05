@@ -16,6 +16,7 @@ import queue
 class ProxyHandler:
 
     shutdown_flag = threading.Event()
+    kill_reverse = False
 
     # SSL/TLS (for connection w/ remote proxies)
     ssl_context = None
@@ -149,30 +150,56 @@ class ProxyHandler:
         self.reverse_listener_sock.close()
         self.client_listener_sock.close()
 
-        while not self.reverse_sockets.empty():
-            s = self.reverse_sockets.get()
-            s.close()
+        if self.kill_reverse:
+            self.kill_reverse_process()
+        else:
+            while not self.reverse_sockets.empty():
+                s = self.reverse_sockets.get()
+                s.close()
 
         sys.exit(0)
 
     # Send "KILL" message to reverse proxies
-    def kill_reverse_process(self, address=None):
+    def kill_reverse_process(self, timeout=1, address=None):
+        # TODO - Use address arg to only kill hosts at a given address
 
-        # TODO - This will send 'KILL' message to waiting reverse proxies
-        # Indicates to close all connections (ALL connections?) and don't try to connect back
-        # Reverse proxies should reply 'DEAD' to confirm they got message (not critical)
+        message = 'KILL'.encode()
 
-        # Limit KILL to a given host
-        if address:
-            logger.info(
-                "[-] Sending 'KILL' message to reverse proxies at {}".format(address))
-            # TODO
-            pass
-        # Kill all
-        else:
-            logger.info("[-] Sending 'KILL' message to all reverse proxies")
-            # TODO
-            pass
+        # Track proxies that reply 'DEAD' (i.e. confirm shutdown)
+        sock_count = self.reverse_sockets.qsize()
+        dead_count = 0
+
+        logger.debug("[!] Killing {} reverse proxies!".format(sock_count))
+
+        while not self.reverse_sockets.empty():
+            s = self.reverse_sockets.get()
+            s.settimeout(timeout)
+            try:
+                s.send(message)
+                reply = s.recv(2048)
+                if len(reply) == 0:
+                    # connection already closed
+                    s.close()
+                    continue
+                elif reply == b'DEAD':
+                    dead_count += 1
+                    s.close()
+                    continue
+                else:
+                    # try one more time, since shit's weird
+                    reply += s.recv(2048)
+                    if reply == b'DEAD':
+                        dead_count += 1
+                        s.close()
+                        continue
+            except socket.timeout:
+                pass
+            finally:
+                s.close()
+        
+        logger.info("'KILL' message sent to {} proxies. {} confirmed 'DEAD'".format(sock_count, dead_count))
+
+
 
     # Listen for incoming connections from reverse proxies
     def listen_for_reverse(self, listen_socket, backlog=20):
@@ -451,6 +478,10 @@ def main():
             verify=args.verify_certs
         )
 
+    # Set kill_reverse property for remote termination of proxies
+    if args.kill_reverse:
+        proxy_handler.kill_reverse = True
+
     proxy_handler.serve()
 
 
@@ -490,6 +521,16 @@ if __name__ == '__main__':
         "--client-address",
         default="127.0.0.1",
         help="IP address to listen for clients connecting"
+    )
+
+    ##########
+    # Reverse proxy interaction options
+    #####
+
+    parser.add_argument(
+        "--kill-reverse",
+        action="store_true",
+        help="Signal reverse proxies to shutdown when handler closes"
     )
 
     ##########

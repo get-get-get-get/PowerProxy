@@ -217,33 +217,34 @@ function Start-ReverseSocksProxy {
 
     # https://blogs.technet.microsoft.com/dsheehan/2018/10/27/powershell-taking-control-over-ctrl-c/
     # Change the default behavior of CTRL-C so that the script can intercept and use it versus just terminating the script.
-    [Console]::TreatControlCAsInput = $True
-    Start-Sleep -Seconds 1              # Helps flush buffer
-    $Host.UI.RawUI.FlushInputBuffer()
-
-    # TODO: implement failure monitoring, map connections to track status
-    while ($WorkersAsync.IsCompleted -contains $false) {
-        
-        if ($Host.UI.RawUI.KeyAvailable -and ($Key = $Host.UI.RawUI.ReadKey("AllowCtrlC,NoEcho,IncludeKeyUp"))) {
-            if ([Int]$Key.Character -eq 3) {
-                Write-Host ""
-                Write-Warning "CTRL-C detected - closing connections and exiting"
-                foreach ($Worker in $Workers) {
-                    $Worker.Powershell.dispose()
-                    #$Worker.Powershell.EndInvoke($Worker.AsyncResult)
+    $OldControlCAsInput = [Console]::TreatControlCAsInput
+    try {
+        [Console]::TreatControlCAsInput = $True
+        Start-Sleep -Seconds 1              # Helps flush buffer
+        $Host.UI.RawUI.FlushInputBuffer()
+    
+        # TODO: implement failure monitoring, map connections to track status
+        while ($WorkersAsync.IsCompleted -contains $false) {
+            
+            if ($Host.UI.RawUI.KeyAvailable -and ($Key = $Host.UI.RawUI.ReadKey("AllowCtrlC,NoEcho,IncludeKeyUp"))) {
+                if ([Int]$Key.Character -eq 3) {
+                    Write-Host ""
+                    Write-Warning "CTRL-C detected - closing connections and exiting"
+                    foreach ($Worker in $Workers) {
+                        $Worker.Powershell.dispose()
+                    }
                 }
-                [Console]::TreatControlCAsInput = $False
+                # Flush the key buffer again for the next loop.
+                $Host.UI.RawUI.FlushInputBuffer()
             }
-            # Flush the key buffer again for the next loop.
-            $Host.UI.RawUI.FlushInputBuffer()
+            
         }
-        
+    }
+    finally {
+        [Console]::TreatControlCAsInput = $OldControlCAsInput
     }
 
-    [Console]::TreatControlCAsInput = $False
-
 }   
-
 
 function Start-SocksProxy {
     <#
@@ -398,6 +399,7 @@ function Start-SocksProxy {
         Write-Host "Listening on $BindAddress`:$BindPort"
 
         # Handle Ctrl-C
+        $OldControlCAsInput = [Console]::TreatControlCAsInput
         [Console]::TreatControlCAsInput = $True
         Start-Sleep -Seconds 1              # Helps flush buffer
         $Host.UI.RawUI.FlushInputBuffer()
@@ -466,13 +468,13 @@ function Start-SocksProxy {
             
         }
     }
-    catch {
+    Catch {
         Write-Warning "Error in SOCKS listener:  $($_.Exception.Message)"
     }
-    finally {
+    Finally {
 
         # Reset Ctrl-C handling to normal
-        [Console]::TreatControlCAsInput = $True
+        [Console]::TreatControlCAsInput = $OldControlCAsInput
         
         Write-Verbose "Server closing..."
         Write-Host "Total connections received: $ConnectionCount"
@@ -896,7 +898,7 @@ function Start-SocksProxyConnection {
     # Socks5 is its own thing
     if ($SocksRequest.Version -eq 5) {
         $Socks5Message = $SocksRequest
-        Start-Socks5Negotiation $Socks5Message -Credential $Credential -AcceptedMethods $AcceptedMethods
+        Start-Socks5Connection $Socks5Message -Credential $Credential -AcceptedMethods $AcceptedMethods
         return
     }
         
@@ -1176,7 +1178,7 @@ function Write-Socks4Response {
 #####
 
 
-function Start-Socks5Negotiation {
+function Start-Socks5Connection {
     <#
     .SYNOPSIS
     Starts SOCKS5 process after receiving initial message
@@ -1717,7 +1719,7 @@ function Get-SystemProxy {
     <#
     Author: @p3nt4
     #>
-    
+
     [CMDletBinding()]
 
     param (

@@ -463,6 +463,7 @@ function Start-SocksProxy {
                     }
                     # Flush the key buffer again for the next loop.
                     $Host.UI.RawUI.FlushInputBuffer()
+                }
             }
             
             

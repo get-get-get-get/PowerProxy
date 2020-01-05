@@ -347,11 +347,6 @@ function Start-SocksProxy {
         Verbose    = ($VerbosePreference -eq "CONTINUE")
     }
 
-    # Scriptblock (ClientStream arg added when connection is received)
-    $ScriptBlock = {
-        $WorkerArgs | Start-SocksProxyConnection -Verbose:$WorkerArgs.Verbose
-    }
-
     # InitialSessionState for eventual runspacepool
     $InitialSessionState = [initialsessionstate]::CreateDefault()
     
@@ -372,23 +367,14 @@ function Start-SocksProxy {
 
     # TODO: How to add/use ClientStream? Won't exist at point when create pool
     # Create runspacepool
-    $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $Connections, $InitialSessionState, $Host)
+    $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $Threads, $InitialSessionState, $Host)
     $RunspacePool.Open()
 
     # Track threads
-    $Workers = @(1..$Threads)
-    $WorkersAsync = @(1..$Threads)       
-    
-    # Janky counter to track threads
-    $ThreadCount = 0
-
-    # Let's also count total connections received
+    $Workers = @()
+        
+    # Track connections received
     $ConnectionCount = 0
-
-    # Create thread pool
-    $ThreadPool = [runspacefactory]::CreateRunspacePool(1, $Threads);
-    $ThreadPool.CleanupInterval = New-TimeSpan -Seconds 30;
-    $ThreadPool.open();
 
     try {
 
@@ -409,6 +395,7 @@ function Start-SocksProxy {
 
             # Check for pending connections (structured to avoid blocking)
             if ($SocksListener.Pending() -eq $True) {
+
                 # Accept incoming connection
                 $Client = $SocksListener.AcceptTcpClient()
                 $ClientStream = $Client.GetStream()
@@ -420,37 +407,26 @@ function Start-SocksProxy {
                     raise "Encryption bullshit"             # idk lol
                 }
                 
+
+                # Add scriptblock
+                $ScriptBlock = {
+                    $WorkerArgs | Start-SocksProxyConnection -Verbose:$WorkerArgs.Verbose -ClientStream $ClientStream
+                }
                 $PowerShell = [PowerShell]::Create()
                 $PowerShell.RunspacePool = $ThreadPool
-                # First attempt at adding ClientStream
-                $PowerShell.AddScript($ScriptBlock).AddArgument($ClientStream)
-
-                # This'll do for now. Just make sure not overwriting worker
-                if ($Workers[$ThreadCount] -is [int]) {
-                    $WorkersAsync[$ThreadCount] = $PowerShell.BeginInvoke()
-                    $Workers[$ThreadCount] = $PowerShell
-                    $ThreadCount++            # Increment thread count
-                }
-                else {
-                    Write-Verbose "ThreadCount: $ThreadCount"
-                    # Search for a spot that isn't used (lol prolly dumb)
-                    for ($i = 0; $i -lt $ThreadCount; $i++) {
-                        if ($Workers[$i] -is [int]) {
-                            $ThreadCount = $i
-                            $WorkersAsync[$ThreadCount] = $PowerShell.BeginInvoke()
-                            $Workers[$ThreadCount] = $PowerShell
-                            break
-                        }
-                    }
-                }
-
-                # TODO: If ThreadCount hits maximum, do something
-                if ($ThreadCount -ge $Threads) {
-                    Write-Verbose "[!] ThreadCount maxed! Is something fucked?"
-                    $ThreadCount = 0
-                }
+                $PowerShell.AddScript($ScriptBlock)
                 
-                Write-Verbose "Threads remaining: $($ThreadPool.GetAvailableRunspaces())" 
+                # Store worker
+                $Worker = New-Object psobject -Property @{
+                    "PowerShell" = $PowerShell
+                    "AsyncResult" = $PowerShell.BeginInvoke()
+                }
+
+                # Add worker to workers array
+                $Workers += $Worker
+                $ThreadCount++
+                
+                Write-Verbose "Threads remaining: $($RunSpacePool.GetAvailableRunspaces())" 
             }
             # Check for ctrl-c
             else {
@@ -480,32 +456,13 @@ function Start-SocksProxy {
         Write-Verbose "Server closing..."
         Write-Host "Total connections received: $ConnectionCount"
 
-        # TODO: fix up this whole sequence
-        $WorkerResults = @(1..$Threads)
-        for ($i = 0; $i -lt $Threads; $i++) {
-
-            # Continue if not worker
-            if ($Workers[$i] -is [int]) {
-                continue
-            }
-            
-            $Worker = $Workers[$i]
-            $Worker.dispose()
-        }
-
-        if ($null -ne $PowerShell -and $null -ne $AsyncJobResult3) {
-            $PowerShell.EndInvoke($AsyncJobResult3) | Out-Null
-            $PowerShell.Runspace.Close()
-            $PowerShell.Dispose()
+        foreach ($Worker in $Workers) {
+            $Worker.PowerShell.dispose()
         }
 
         # Close connections and jobs before exiting
         if ($null -ne $SocksListener) {
             $SocksListener.Stop()
-        }
-        if ($null -ne $Client) {
-            $Client.Dispose()
-            $Client = $null
         }
 
         Write-Host "[-] Server closed"

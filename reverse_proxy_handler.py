@@ -182,7 +182,8 @@ class ProxyHandler:
         sock_count = self.reverse_sockets.qsize()
         dead_count = 0
 
-        logger.debug("[!] Killing {} reverse proxies!".format(sock_count))
+        if sock_count:
+            logger.debug("[!] Killing {} reverse proxies!".format(sock_count))
 
         while not self.reverse_sockets.empty():
             s = self.reverse_sockets.get()
@@ -209,8 +210,9 @@ class ProxyHandler:
                 pass
             finally:
                 s.close()
-        
-        logger.info("'KILL' message sent to {} proxies. {} confirmed 'DEAD'".format(sock_count, dead_count))
+
+        if sock_count:
+            logger.info("'KILL' message sent to {} proxies. {} confirmed 'DEAD'".format(sock_count, dead_count))
 
 
     # Listen for incoming connections from reverse proxies

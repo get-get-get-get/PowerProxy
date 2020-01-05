@@ -532,10 +532,9 @@ def main():
         client_address, client_port, reverse_address, reverse_port)
 
     # Set SSL for ProxyHandler (or don't)
-    if args.cert:
-        ssl_cert = args.cert
-    if args.key:
-        ssl_key = args.key
+    ssl_cert = args.cert
+    ssl_key = args.key
+    
     if args.create_cert:
         ssl_cert, ssl_key = create_ssl_cert(cert_path=ssl_cert, key_path=ssl_key, temporary=False)
     

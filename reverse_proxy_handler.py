@@ -532,10 +532,17 @@ def main():
         client_address, client_port, reverse_address, reverse_port)
 
     # Set SSL for ProxyHandler (or don't)
+    if args.cert:
+        ssl_cert = args.cert
+    if args.key:
+        ssl_key = args.key
+    if args.create_cert:
+        ssl_cert, ssl_key = create_ssl_cert(cert_path=ssl_cert, key_path=ssl_key, temporary=False)
+    
     if not args.no_encrypt:
         proxy_handler.set_ssl_context(
-            certificate=args.cert,
-            private_key=args.key,
+            certificate=ssl_cert,
+            private_key=ssl_key,
             verify=args.verify_certs
         )
 
@@ -601,13 +608,13 @@ if __name__ == '__main__':
         "-c",
         "--cert",
         default=None,
-        help="Path to certificate"
+        help="Path to SSL certificate"
     )
     parser.add_argument(
         "-k",
         "--key",
         default=None,
-        help="Path to private key"
+        help="Path to SSL private key"
     )
     parser.add_argument(
         "--create-cert",

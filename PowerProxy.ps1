@@ -1711,8 +1711,13 @@ function Confirm-SocksCredential {
 #####
 
 # Utility function for using System's native proxy (IDK shit about this)
+# Credit to @p3nt4 (github.com/p3nt4), who credits @Arno0x for the technique
 function Get-SystemProxy {
 
+    <#
+    Author: @p3nt4
+    #>
+    
     [CMDletBinding()]
 
     param (

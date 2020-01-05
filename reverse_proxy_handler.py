@@ -377,9 +377,8 @@ class ProxyHandler:
                 raise
         
         # Record socket use in self.used_reverse_sockets
-        address = reverse_socket.getpeername()
         sock_id = id(reverse_socket)
-        self.used_reverse_sockets.put((address, sock_id))
+        self.used_reverse_sockets.put(sock_id)
 
         return reverse_socket
 
@@ -395,12 +394,14 @@ class ProxyHandler:
         while not (self.shutdown_flag.is_set()):
             
             # Check if a reverse connection has been used for proxying
+
             while not self.used_reverse_sockets.empty():
-                used_address, used_id = self.used_reverse_sockets.get()
-                try:
-                    self.reverse_connections[used_address].remove(used_id)
-                except:
-                    pass
+                used_id = self.used_reverse_sockets.get()
+                if used_id in self.reverse_connections.values():
+                    for k, v in self.reverse_connections.items():
+                        if v == used_id:
+                            self.reverse_connections[k].remove(v)
+                            break
 
             if self.reverse_sockets.empty():
                 time.sleep(wait_time)

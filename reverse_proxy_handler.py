@@ -37,8 +37,10 @@ class ProxyHandler:
         self.reverse_port = int(listen_port)
         self.reverse_listener_sock = None
 
-        # Active connections to remote proxies (sockets)
+        # Active connections from reverse proxies (sockets)
         self.reverse_sockets = queue.Queue()
+        # Reverse proxies working with clients -- stores tuple (address, id), used by reverse_connection_poller
+        self.used_reverse_sockets = queue.Queue()
 
     # SSL/TLS for connection with remote proxies
     def set_ssl_context(self, certificate=None, private_key=None, verify=True):
@@ -211,7 +213,6 @@ class ProxyHandler:
         logger.info("'KILL' message sent to {} proxies. {} confirmed 'DEAD'".format(sock_count, dead_count))
 
 
-
     # Listen for incoming connections from reverse proxies
     def listen_for_reverse(self, listen_socket, backlog=20):
 
@@ -375,6 +376,11 @@ class ProxyHandler:
                 self.kill_local_process()
                 raise
         
+        # Record socket use in self.used_reverse_sockets
+        address = reverse_socket.getpeername()
+        sock_id = id(reverse_socket)
+        self.used_reverse_sockets.put((address, sock_id))
+
         return reverse_socket
 
     # Check on waiting reverse proxies to see if connection still open
@@ -387,6 +393,14 @@ class ProxyHandler:
         # But also, this should still work even if it did. Just not ideal
          
         while not (self.shutdown_flag.is_set()):
+            
+            # Check if a reverse connection has been used for proxying
+            while not self.used_reverse_sockets.empty():
+                used_address, used_id = self.used_reverse_sockets.get()
+                try:
+                    self.reverse_connections[used_address].remove(used_id)
+                except:
+                    pass
 
             if self.reverse_sockets.empty():
                 time.sleep(wait_time)

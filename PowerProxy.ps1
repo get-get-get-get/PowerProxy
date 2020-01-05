@@ -413,7 +413,7 @@ function Start-SocksProxy {
                     $WorkerArgs | Start-SocksProxyConnection -Verbose:$WorkerArgs.Verbose -ClientStream $ClientStream
                 }
                 $PowerShell = [PowerShell]::Create()
-                $PowerShell.RunspacePool = $ThreadPool
+                $PowerShell.RunspacePool = $RunspacePool
                 $PowerShell.AddScript($ScriptBlock)
                 
                 # Store worker

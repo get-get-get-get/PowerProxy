@@ -633,13 +633,11 @@ function Invoke-ReverseProxyWorker {
         Message = "WAKE"
         BYTES   = Convert-StringToBytes "WAKE"
         Reply   = Convert-StringToBytes "WOKE"
-        Action  = "Start-SocksProxyConnection"       # TODO: add args and things
     }
     $KillMessage = @{
         Message = "KILL"
         BYTES   = Convert-StringToBytes "KILL"
         Reply   = Convert-StringToBytes "DEAD"
-        Action  = "return"                   # TODO: something to this effect
     }
 
     $Messages = $WakeMessage, $KillMessage
@@ -736,20 +734,17 @@ function Invoke-ReverseProxyWorker {
 
                     # Read rest of message
                     $ClientStream.Read($Buffer, 1, 3)
-                    # Check if message matches action
+                    # Check if matches any known message
                     foreach ($key in $messages) {
                         # If it's a message, send the reply and take the action
                         if ((Compare-Object $key.bytes $buffer -SyncWindow 0).length -eq 0) {
                             $Message = $key.Message
-                            
-                            # NOTE: apparently NetworkStream is not buffered and doesn't need flush()
-                            # but SSLStream seems to implement it, and maybe needs flush()
+
                             $Buffer = $key.reply
                             $ClientStream.Write($Buffer, 0, $Buffer.length)
                             $ClientStream.Flush()
-                            $Buffer = New-Object System.Byte[] 4
 
-                            Write-Verbose "Received message from handler: '$($key.Message)'"
+                            Write-Verbose "Received message from handler: '$($Message)'"
                         }
                     }
 

@@ -275,7 +275,7 @@ function Start-SocksProxy {
     Use TLS to encrypt connections with clients. (not implemented)
     #>
 
-    [Alias('Invoke-BindProxy', 'Start-SocksProxy', 'Start-BindProxy', 'Start-SocksProxyServer')]
+    [Alias('Invoke-BindProxy', 'Start-BindProxy', 'Start-SocksProxyServer')]
 
     # CMDletBinding should add support for Write-Verbose, among other things
     [CMDletBinding()]

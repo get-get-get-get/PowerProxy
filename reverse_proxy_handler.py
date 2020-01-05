@@ -7,7 +7,9 @@ import select
 import signal
 import socket
 import ssl
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import queue
@@ -50,15 +52,16 @@ class ProxyHandler:
         # Don't check hostname
         ssl_context.check_hostname = False
 
-        # Store paths to cert and key files, for idk why
+        # Store paths to cert and key files
         if certificate:
             self.ssl_cert = os.path.abspath(certificate)
-        if private_key:
-            self.ssl_key = os.path.abspath(private_key)
+            if private_key:
+                self.ssl_key = os.path.abspath(private_key)
+        else:
+            self.ssl_cert_is_temporary = True
+            self.ssl_cert, self.ssl_key = create_ssl_cert()
 
-        # Use custom cert/key if given
-        if self.ssl_cert and self.ssl_key:
-            ssl_context.load_cert_chain(self.ssl_cert, self.ssl_key)
+        ssl_context.load_cert_chain(self.ssl_cert, keyfile=self.ssl_key)
 
         # Don't be a dick about certs:
         if not verify:
@@ -152,10 +155,15 @@ class ProxyHandler:
 
         if self.kill_reverse:
             self.kill_reverse_process()
-        else:
-            while not self.reverse_sockets.empty():
-                s = self.reverse_sockets.get()
-                s.close()
+
+        while not self.reverse_sockets.empty():
+            s = self.reverse_sockets.get()
+            s.close()
+        
+        # Delete temporary ssl files
+        if self.ssl_cert_is_temporary:
+            os.remove(self.ssl_cert)
+            os.remove(self.ssl_key)
 
         sys.exit(0)
 
@@ -457,6 +465,59 @@ class ProxyHandler:
             reply = 'WOKE'
         return reply
 
+# Use OpenSSL to create a server cert. Returns (cert_path, key_path)
+def create_ssl_cert(cert_path=None, key_path=None, temporary=True):
+
+    # Create paths to output cert and key
+    if temporary:
+        logger.info("[&] Creating temporary SSL cert")
+        __, cert_path = tempfile.mkstemp()
+        __, key_path = tempfile.mkstemp()
+        logger.debug("Path to temporary SSL cert: {}".format(cert_path))
+        logger.debug("Path to temporary SSL key: {}".format(key_path))
+    else:
+        logger.info("[&] Creating SSL cert")
+
+        # Create certificate path
+        if cert_path:
+            if os.path.exists(cert_path):
+                temp_cert_path = os.path.join(tempfile.gettempdir(), os.path.splitext(sys.argv[0])[0]) + "pem"
+                logger.error("[!] File at {} already exists! Saving cert to {}".format(cert_path, temp_cert_path))
+                cert_path = temp_cert_path
+            cert_path = os.path.abspath(cert_path)
+        else:
+            if os.access(os.getcwd(), os.W_OK):
+                cert_path = os.path.join(os.getcwd(), "cert.pem")
+            else:
+                cert_path = os.path.join(tempfile.gettempdir(), "cert.pem")
+
+        # Create key path
+        if key_path:
+            if os.path.exists(key_path):
+                temp_key_path = os.path.join(tempfile.gettempdir(), os.path.splitext(sys.argv[0])[0]) + "pem"
+                logger.error("[!] File at {} already exists! Saving cert to {}".format(key_path, temp_key_path))
+                key_path = temp_key_path
+            key_path = os.path.abspath(key_path)
+        else:
+            if os.access(os.getcwd(), os.W_OK):
+                cert_path = os.path.join(os.getcwd(), "cert.key")
+            else:
+                cert_path = os.path.join(tempfile.gettempdir(), "cert.key")
+ 
+        logger.debug("Path to SSL cert: {}".format(cert_path))
+        logger.debug("Path to SSL key: {}".format(key_path))
+    
+    # Now run OpenSSL
+    openssl = f"openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout {key_path} -out {cert_path} -batch"
+    openssl_result = subprocess.run(openssl.split(), capture_output=True)
+
+    if openssl_result.returncode == 0:
+        logger.debug("[&] SSL cert created successfully!")
+    else:
+        logger.warning("[!] OpenSSL returncode not zero! Possible error!")
+
+    return cert_path, key_path
+
 
 def main():
 
@@ -547,6 +608,11 @@ if __name__ == '__main__':
         "--key",
         default=None,
         help="Path to private key"
+    )
+    parser.add_argument(
+        "--create-cert",
+        action="store_true",
+        help="Create SSL cert/key (requires OpenSSL)"
     )
     parser.add_argument(
         "--no-encrypt",

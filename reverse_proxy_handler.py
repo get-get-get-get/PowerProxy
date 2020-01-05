@@ -162,8 +162,11 @@ class ProxyHandler:
         
         # Delete temporary ssl files
         if self.ssl_cert_is_temporary:
-            os.remove(self.ssl_cert)
-            os.remove(self.ssl_key)
+            try:
+                os.remove(self.ssl_cert)
+                os.remove(self.ssl_key)
+            except FileNotFoundError:
+                pass
 
         sys.exit(0)
 

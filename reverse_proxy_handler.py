@@ -473,21 +473,22 @@ class ProxyHandler:
 # Use OpenSSL to create a server cert. Returns (cert_path, key_path)
 def create_ssl_cert(cert_path=None, key_path=None, temporary=True):
 
-    # OpenSSL wants some CN, so make one
-    try:
-        hostname = os.uname().nodename
-    except:
-        hostname = "example.local"
-
     # Create paths to output cert and key
     if temporary:
         logger.info("[&] Creating temporary SSL cert")
+        domain = "example.local"
         __, cert_path = tempfile.mkstemp()
         __, key_path = tempfile.mkstemp()
         logger.info("Path to temporary SSL cert: {}".format(cert_path))
         logger.info("Path to temporary SSL key: {}".format(key_path))
     else:
         logger.info("[&] Creating SSL cert")
+
+        # OpenSSL wants this
+        try:
+            domain = os.uname().nodename
+        except:
+            domain = "example.local"
 
         # Create certificate path
         if cert_path:
@@ -519,7 +520,7 @@ def create_ssl_cert(cert_path=None, key_path=None, temporary=True):
         logger.debug("Path to SSL key: {}".format(key_path))
     
     # Now run OpenSSL
-    openssl = f'openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout {key_path} -out {cert_path} -batch -subj /CN={hostname}'
+    openssl = f'openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout {key_path} -out {cert_path} -batch -subj /CN={domain}'
     openssl_result = subprocess.run(openssl.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     if openssl_result.returncode == 0:

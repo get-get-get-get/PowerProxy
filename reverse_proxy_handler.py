@@ -361,7 +361,7 @@ class ProxyHandler:
 
             logger.error("[!] No reverse proxies available: {}".format(e))
             logger.debug(
-                "Waiting {} seconds (at most) for a proxy to connect".format(wait * max_attempts))
+                "Waiting max {} seconds for a proxy".format(wait * max_attempts))
 
             for __ in range(max_attempts - 1):
                 time.sleep(wait)
@@ -372,8 +372,7 @@ class ProxyHandler:
                     pass
 
             if not reverse_socket:
-                logger.error(
-                    "[!] No proxies showed up! Killing process and exiting...")
+                logger.error("[!] No proxies showed up! Killing process and exiting...")
                 self.kill_local_process()
                 raise
         

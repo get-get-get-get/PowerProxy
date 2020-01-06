@@ -488,32 +488,7 @@ function Start-SocksProxy {
 function Invoke-ReverseProxyWorker {
     <#
     .SYNOPSIS
-    Connects to remote machine and acts as Socks server to tunnel traffic out.
-    .DESCRIPTION
-    Connects back to remote handler, then starts job tunneling connection out as proxy.
-    .EXAMPLE
-    # Act as proxy for remote machine listening at 172.1.1.20, port 2200
-    Invoke-ReverseSocksProxy -RemoteHost 172.1.1.20 -Port 2200
-    .EXAMPLE
-    # Verify SSL cert of remote machine, and use SystemProxy
-    Invoke-ReverseSocksProxy -RemoteHost 172.1.1.20 -SystemProxy -FingerPrint 93061FDB30D69A435ACF96430744C5CC5473D44E -Verbose
-    
-    .PARAMETER RemoteHost
-    IP address of remote handler.
-    .PARAMETER RemotePort
-    Port on handler to connect to. Default = 443
-    .PARAMETER SystemProxy
-    Tunnel via default system proxy. 
-    .PARAMETER Certificate
-    Validate remote certificate matches given fingerprint.
-    .PARAMETER MaximumRetries
-    Attempt to connect this many times before quiting
-    .PARAMETER WaitBeforeRetry
-    Seconds to wait after failed connection before trying again.
-    .PARAMETER NoEncryption
-    Connect to remote host without TLS
-    .PARAMETER Version
-    Socks version
+    Called by Start-ReverseSocksProxy. Connects to remote machine and acts as Socks server to tunnel traffic out.
     #>
 
     [CMDletBinding()]
@@ -760,15 +735,8 @@ function Connect-TcpStreams {
     <#
     .SYNOPSIS
     Forward TCP traffic after SOCKS connection started
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER TcpStreamA
-    [System.Net.Sockets.NetworkStream]
-    .PARAMETER TcpStreamB
-    [System.Net.Sockets.NetworkStream] 
     #>
+
     [Alias('Forward-TcpStreams')]
 
     [CMDletBinding()]
@@ -854,7 +822,13 @@ function Start-SocksProxyConnection {
     # Reject request if wrong Socks version
     if ($Version -notcontains $SocksRequest.Version) {
         Write-Verbose "Client requested Socks $($SocksRequest.Version) but only Socks $Version was allowed"
-        $SocksRequest | Write-SocksResponse $Clientstream -Reject
+
+        if ($SocksRequest.Version -eq 4) {
+            Write-Socks4Response $ClientStream -Reject
+        }
+        else {
+            Write-Socks5MessageReply $ClientStream -Reject
+        }
         Write-Verbose "[-] Client rejected"
         return
     }
@@ -862,7 +836,7 @@ function Start-SocksProxyConnection {
     # Socks5 is its own thing
     if ($SocksRequest.Version -eq 5) {
         $Socks5Message = $SocksRequest
-        Start-Socks5Connection $Socks5Message -Credential $Credential -AcceptedMethods $AcceptedMethods
+        Start-Socks5Connection $ClientStream $Socks5Message -Credential $Credential -AcceptedMethods $AcceptedMethods
         return
     }
         
@@ -870,13 +844,13 @@ function Start-SocksProxyConnection {
     Write-Host "[_] Tunneling client to $($SocksRequest.DestinationAddress)`:$($SocksRequest.DestinationPort)"
     $ProxyDestination = New-Object System.Net.Sockets.TcpClient($SocksRequest.DestinationAddress, $SocksRequest.DestinationPort)
     if ($ProxyDestination.Connected) {
-        $SocksRequest | Write-SocksResponse $ClientStream
+        Write-Socks4Response $ClientStream
     }
 
     # Reject if connection failed
     else {
         Write-Host "[!] Connection FAILED!"
-        $SocksRequest | Write-SocksResponse -Reject
+        Write-Socks4Response $ClientStream -Reject
         return
     }
     $ProxyDestinationStream = $ProxyDestination.GetStream()
@@ -890,16 +864,7 @@ function Start-SocksProxyConnection {
 function Read-SocksRequest {
     <#
     .SYNOPSIS
-    TODO
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER ClientStream
-    NetStream object representing client connection
-    .PARAMETER AcceptedMethod
-    Socks5 Method to accept in negotiation
-    TODO, allow an array of accepted methods
+    Reads initial SOCKS message. For SOCKS 4, this is the request. For SOCKS 5 this is negotiation message.
     #>
 
     [CMDletBinding()]
@@ -935,101 +900,23 @@ function Read-SocksRequest {
     $SocksRequest
 }
 
-
-function Write-SocksResponse {
-    <#
-    .SYNOPSIS
-    TODO
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER ClientStream
-    NetStream object representing client connection
-    .PARAMETER DestinationAddress
-    Requested destination
-    .PARAMETER DestinationAddressType
-    Type of address found in request. Only needed for Socks5
-    .PARAMETER DestinationPort
-    Requested port
-    .PARAMETER Reject
-    Rejects Socks4 request (default is to accept)
-    TODO: Implement BND.ADDR and BND.PORT for socks5. Doesn't seem  to matter so I'm ignoring atm
-    #>
-
-    [CMDletBinding()]
-
-    param (
-        # Client TCP stream
-        [Parameter(Mandatory = $True, Position = 0, ValueFromPipelineByPropertyName = $true)]
-        $ClientStream,
-
-        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
-        [System.Net.IPAddress]
-        $DestinationAddress,
-
-        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
-        [int]
-        $DestinationPort,
-
-        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
-        [ValidateSet(4, 5)]
-        [Alias('SocksVersion')]
-        [int]
-        $Version,
-
-        [Parameter(ValueFromPipelineByPropertyName = $true)]
-        [ValidateSet('IPv4', 'IPv6', 'DN')]
-        [string]
-        $DestinationAddressType = "IPv4",
-
-        [Parameter(ValueFromPipelineByPropertyName = $true)]
-        [switch]
-        $Reject = $false
-    )
-
-    # Apparently that doesn't work, b/c of some shit I don't like
-    # $ContextArgs = $PSBoundParameters
-
-    if ($Version -eq 4) {
-        # Testing by remove reject param
-        Write-Socks4Response -ClientStream $ClientStream -DestinationAddress $DestinationAddress -DestinationPort $DestinationPort -Reject:$Reject
-    }
-    else {
-        Write-Host "Sending Socks5 response (will fuck up apparently)"
-        # NOTE: this will fuck up
-        $ContextArgs | Write-Socks5Response
-    }
-}
-
-
-
 ##########
 # SOCKS-4 functions
 #####
 
-
 function Read-Socks4Request {
     <#
     .SYNOPSIS
-    TODO
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER ClientStream
-    NetStream object representing client connection
-    
+    Reads SOCKS 4 request from stream. 1 bit already read to determine version.
     #>
 
+    [CMDletBinding()]
     param (
         # Client TCP stream, with 1 byte already read (version)
         [Parameter(Mandatory = $True, Position = 0, ValueFromPipelineByPropertyName = $true)]
         $ClientStream
 
     )
-
-    [CMDletBinding()]
 
     $Version = 4
 
@@ -1067,8 +954,6 @@ function Read-Socks4Request {
         }
     }
     
-
-
     # Instantiate some object
     $Socks4Request = new-object psobject -property @{
         ClientStream       = $ClientStream
@@ -1085,35 +970,14 @@ function Read-Socks4Request {
 function Write-Socks4Response {
     <#
     .SYNOPSIS
-    TODO
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER ClientStream
-    NetStream object representing client connection
-    .PARAMETER DestinationAddress
-    Requested IPv4 destination
-    .PARAMETER DestinationPort
-    Requested port
-    .PARAMETER Reject
-    Rejects Socks4 request (default is to accept)
+    Sends SOCKS 4 request through stream.
     #>
 
     [CMDletBinding()]
 
     param (
-        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Mandatory = $true, Position = 0, ValueFromPipelineByPropertyName = $true)]
         $ClientStream,
-
-        # Unnecessary, consider deleting
-        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
-        [System.Net.IPAddress]
-        $DestinationAddress,
-
-        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
-        [int]
-        $DestinationPort,
 
         # Unnecessary, consider deleting
         [Parameter(ValueFromPipelineByPropertyName = $true)]
@@ -1121,39 +985,38 @@ function Write-Socks4Response {
         $Reject
     )
 
-    # Use buffer to prep reply
+    # Use buffer to prep reply. (8 bytes b/c destination address/port fields ignored w/ CONNECT)
     $Buffer = New-Object System.Byte[] 8
 
     # Write Response code
     $Buffer[1] = 90            # Accept code
     if ($Reject) {
         $Buffer[1] = 91        # Reject code (generic)
-        Write-Host "Rejecting request"
     }
 
     # Send reply to client
     $ClientStream.Write($Buffer, 0, $Buffer.Length)
     $ClientStream.Flush()
-
 }
 
 ##########
 # SOCKS-5 functions
 #####
 
-
 function Start-Socks5Connection {
     <#
     .SYNOPSIS
     Starts SOCKS5 process after receiving initial message
-    
-    .PARAMETER Socks5Message
-    PSobject representing initial message from client. Has properties: ClientStream,Version,Methods
     #>
 
     [CMDletbinding()]
+
     param (
+
         [Parameter(Mandatory = $True, Position = 0, ValueFromPipelineByPropertyName = $true)]
+        $ClientStream,
+
+        [Parameter(Mandatory = $True, Position = 1, ValueFromPipelineByPropertyName = $true)]
         [Alias('SocksMessage', 'Message')]
         [psobject]
         $Socks5Message,
@@ -1172,7 +1035,6 @@ function Start-Socks5Connection {
         [string[]]
         $AcceptedMethods = @("NOAUTH")
     )
-
 
     ##########
     # Negotiation
@@ -1212,9 +1074,6 @@ function Start-Socks5Connection {
             Write-Warning "GSSAPI not implemented"
             return
         }
-        else {
-
-        }
     }
     # No acceptable methods; reject, return and close
     else {
@@ -1223,7 +1082,7 @@ function Start-Socks5Connection {
     }
 
     ##########
-    # Socks5 for real
+    # After authentication
     #####
 
     <#
@@ -1244,7 +1103,7 @@ function Start-Socks5Connection {
 
     #### connect to target
     if ($SocksRequest.Command -eq "CONNECT") {
-        # TODO: actually do this instead of just copy/paste
+
         Write-Host "[_] Tunneling client to $($SocksRequest.DestinationAddress)`:$($SocksRequest.DestinationPort)"
         $ProxyDestination = New-Object System.Net.Sockets.TcpClient($SocksRequest.DestinationAddress, $SocksRequest.DestinationPort)
         if ($ProxyDestination.Connected) {
@@ -1267,17 +1126,10 @@ function Start-Socks5Connection {
     return
 }
 
-
 function Read-Socks5Message {
     <#
     .SYNOPSIS
-    TODO
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER ClientStream
-    NetStream object representing client connection
+    Reads first message of SOCKS 5 negotiation. Assumes 1 bit read, to determine version
     #>
 
     [CMDletBinding()]
@@ -1323,17 +1175,7 @@ function Read-Socks5Message {
 function Write-Socks5MessageReply {
     <#
     .SYNOPSIS
-    TODO
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER ClientStream
-    NetStream object representing client connection
-    .PARAMETER AcceptedMethod
-    Method to accept in negotiation
-    .PARAMETER Reject
-    Send reply indicating no acceptable methods
+    Sends SOCKS 5 reply message through stream. Response to method negotiation
     #>
 
     [CMDletBinding()]
@@ -1356,7 +1198,7 @@ function Write-Socks5MessageReply {
 
     $Buffer = new-object system.Byte[] 2
 
-    # TODO: validate that this is supposed to be 5 and not 0 or something (VER field)
+    # VER field
     $Buffer[0] = 5
 
     if ($Reject) {
@@ -1380,8 +1222,10 @@ function Confirm-Socks5UserPass {
     <#
     .SYNOPSIS 
     Performs USERPASS subnegotiation
-    
     #>
+
+    # TODO: rename 
+
     [CMDletBinding()]
 
     param (
@@ -1410,7 +1254,6 @@ function Confirm-Socks5UserPass {
     #>
 
     $ValidAuthentication = $false 
-
 
     $Buffer = new-object byte[] 32
     
@@ -1474,18 +1317,10 @@ function Confirm-Socks5UserPass {
     
 }
 
-
 function Read-Socks5Request {
     <#
     .SYNOPSIS
-    TODO
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER ClientStream
-    NetStream object representing client connection
-    
+    Reads SOCKS 5 request from stream. Performed after authentication complete
     #>
 
     [CMDletBinding()]
@@ -1555,21 +1390,7 @@ function Read-Socks5Request {
 function Write-Socks5Response {
     <#
     .SYNOPSIS
-    TODO
-    .DESCRIPTION
-    TODO
-    .EXAMPLE
-
-    .PARAMETER ClientStream
-    NetStream object representing client connection
-    .PARAMETER BoundAddressType
-    TODO
-    .PARAMETER BoundAddress
-    TODO
-    .PARAMETER BoundPort
-    TODO
-    .PARAMETER Reject
-    Rejects Socks5 request (default is to accept)
+    Writes response to SOCKS 5 request
     #>
 
     [CMDletBinding()]
@@ -1589,7 +1410,6 @@ function Write-Socks5Response {
         [Parameter(ValueFromPipelineByPropertyName = $true)]
         [int]
         $BoundPort = 49985,
-
 
         [Parameter(ValueFromPipelineByPropertyName = $true)]
         [bool]
@@ -1638,6 +1458,11 @@ function Write-Socks5Response {
 #####
 
 function Confirm-SocksCredential {
+    <#
+    .SYNOPSIS
+    Validates that one PScredential matches the other
+    #>
+
 
     [CMDletBinding()]
 
@@ -1655,14 +1480,14 @@ function Confirm-SocksCredential {
     $UsernamesMatch = $false
     $PasswordsMatch = $false
 
-
     # Easier to work w/
     $UserNetCredential = $ClientCredential.GetNetworkCredential()
     $ValidNetCredential = $ValidCredential.GetNetworkCredential()
 
-    # TODO: figure out proper syntax for sensitive comparisons
+    # Compare usernames. Not case sensitive
     $UsernamesMatch = ($UserNetCredential.Username -eq $ValidNetCredential.UserName)
     if ($UsernamesMatch) {
+        # Compare passwords, case sensitive.
         $PasswordsMatch = ($UserNetCredential.Password -ceq $ValidNetCredential.Password)
     }
 
@@ -1670,7 +1495,6 @@ function Confirm-SocksCredential {
     $PasswordsMatch
 
 }
-
 
 ##########
 # Helper functions
@@ -1726,7 +1550,6 @@ function Resolve-DomainName {
     <#
     .SYNOPSIS
     Resolves domain name
-    
     .PARAMETER Domain
     Domain name
     .PARAMETER AsString
@@ -1763,12 +1586,9 @@ function Convert-IntToBytes {
     Converts integer into byte array
     .DESCRIPTION
     Converts integer into byte array
-    .EXAMPLE
-    TODO
-
-    .PARAMETER Int
+    .PARAMETER InputInt
     String (ascii) or integer
-    .PARAMETER Size
+    .PARAMETER OutputSize
     Return an array of this size  
     #>
 
@@ -1793,41 +1613,6 @@ function Convert-IntToBytes {
     $Result
 }
 
-function Convert-BytesToInt {
-    <#
-    .SYNOPSIS
-    Converts byte array to integer
-    .DESCRIPTION
-    Converts byte arrays of length <= 8 to integer (either int16, int32, or int64)
-    .EXAMPLE
-    # Convert range of an array into integer (returns int32)
-    Get-Int $Buffer[0..3]
-
-    .PARAMETER Bytes
-    Byte array. Max length: 8
-    #>
-
-    [CMDletBinding()]
-
-    param (
-        [Parameter(Mandatory = $True, Position = 0)]
-        [Byte[]]
-        [ValidateScript( { $_.length -le 8 })]
-        $Bytes 
-    )
-
-    if ($Bytes.length -lt 4) {
-        [System.BitConverter]::ToInt16($Bytes, 0)
-    }
-    elseif ($Bytes.length -eq 4) {
-        [System.BitConverter]::ToInt32($Bytes, 0)
-    }
-    else {
-        [System.BitConverter]::ToInt64($Bytes, 0)
-    }
-}
-
-
 function Convert-StringToBytes {
 
     <#
@@ -1835,9 +1620,6 @@ function Convert-StringToBytes {
     Converts a string into byte array
     .DESCRIPTION
     Converts (ascii) string into byte array
-    .EXAMPLE
-    TODO
-
     .PARAMETER String
     String (ascii) or integer
     .PARAMETER Unicode
@@ -1871,8 +1653,6 @@ function Convert-BytesToString {
     Converts byte array to ascii
     .DESCRIPTION
     Converts byte arrays to ascii strings
-    .EXAMPLE
-    TODO
     .PARAMETER Bytes
     Byte array. Max length: 8
     .PARAMETER Unicode

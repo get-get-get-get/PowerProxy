@@ -390,16 +390,6 @@ class ProxyHandler:
          
         while not (self.shutdown_flag.is_set()):
             
-            # Check if a reverse connection has been used for proxying
-
-            while not self.used_reverse_sockets.empty():
-                used_id = self.used_reverse_sockets.get()
-                if used_id in self.reverse_connections.values():
-                    for k, v in self.reverse_connections.items():
-                        if v == used_id:
-                            self.reverse_connections[k].remove(v)
-                            break
-
             if self.reverse_sockets.empty():
                 time.sleep(wait_time)
                 continue

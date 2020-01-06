@@ -499,8 +499,8 @@ def create_ssl_cert(cert_path=None, key_path=None, temporary=True):
         logger.info("[&] Creating temporary SSL cert")
         __, cert_path = tempfile.mkstemp()
         __, key_path = tempfile.mkstemp()
-        logger.debug("Path to temporary SSL cert: {}".format(cert_path))
-        logger.debug("Path to temporary SSL key: {}".format(key_path))
+        logger.info("Path to temporary SSL cert: {}".format(cert_path))
+        logger.info("Path to temporary SSL key: {}".format(key_path))
     else:
         logger.info("[&] Creating SSL cert")
 

@@ -365,10 +365,6 @@ function Start-SocksProxy {
     $WorkerVariable = New-Object System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList 'WorkerArgs', $WorkerArgs, $null
     $InitialSessionState.Variables.Add($WorkerVariable)
 
-    # TODO: How to add/use ClientStream? Won't exist at point when create pool
-    # Create runspacepool
-    $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $Threads, $InitialSessionState, $Host)
-    $RunspacePool.Open()
 
     # Track threads
     $Workers = @()
@@ -408,12 +404,24 @@ function Start-SocksProxy {
                 }
                 
 
+                ####################
+                # workaround to add clientstream var to runspace
+                ###########
+
+                # Add ClientStream var to InitialSessionState (Does this fuck up next time a client comes?)
+                $ClientStreamVariable = New-Object System.Management.Automation.Runspaces.SessionStateVariableEntry -ArgumentList 'ClientStream', $ClientStream, $null
+                $InitialSessionState.Variables.Add($ClientStreamVariable)
+                
+                # Create Runspace using InitialSessionState
+                $Runspace = [runspacefactory]::CreateRunspace($Host, $InitialSessionState)
+                $Runspace.open()
+
                 # Add scriptblock
                 $ScriptBlock = {
                     $WorkerArgs | Start-SocksProxyConnection -Verbose:$WorkerArgs.Verbose -ClientStream $ClientStream
                 }
                 $PowerShell = [PowerShell]::Create()
-                $PowerShell.RunspacePool = $RunspacePool
+                $PowerShell.Runspace = $Runspace
                 $PowerShell.AddScript($ScriptBlock)
                 
                 # Store worker
@@ -426,7 +434,7 @@ function Start-SocksProxy {
                 $Workers += $Worker
                 $ThreadCount++
                 
-                Write-Verbose "Threads remaining: $($RunSpacePool.GetAvailableRunspaces())" 
+                #Write-Verbose "Threads remaining: $($RunSpacePool.GetAvailableRunspaces())" 
             }
             # Check for ctrl-c
             else {
@@ -434,6 +442,11 @@ function Start-SocksProxy {
                     if ([Int]$Key.Character -eq 3) {
                         Write-Host ""
                         Write-Warning "CTRL-C detected - closing connections and exiting"
+
+                        Foreach ($Worker in $Workers) {
+                            $Worker.PowerShell.Dispose()
+                        }
+
                         [Console]::TreatControlCAsInput = $False
                         break
                     }

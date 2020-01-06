@@ -215,31 +215,58 @@ function Start-ReverseSocksProxy {
 
     # https://blogs.technet.microsoft.com/dsheehan/2018/10/27/powershell-taking-control-over-ctrl-c/
     # Change the default behavior of CTRL-C so that the script can intercept and use it versus just terminating the script.
-    $OldControlCAsInput = [Console]::TreatControlCAsInput
-    try {
-        [Console]::TreatControlCAsInput = $True
-        Start-Sleep -Seconds 1              # Helps flush buffer
-        $Host.UI.RawUI.FlushInputBuffer()
     
+    # [Console]::TreatControlCAsInput is invalid if not TTY
+    try {
+        $OldControlCAsInput = [Console]::TreatControlCAsInput
+        $TerminalIsTTY = $True
+    }
+    catch {
+        $TerminalIsTTY = $False
+    }
+    
+    
+    try {
+        if ($TerminalIsTTY) {
+            [Console]::TreatControlCAsInput = $True
+            Start-Sleep -Seconds 1              # Helps flush buffer
+            $Host.UI.RawUI.FlushInputBuffer()
+        }
+        
         # TODO: implement failure monitoring, map connections to track status
         while ($WorkersAsync.IsCompleted -contains $false) {
             
-            if ($Host.UI.RawUI.KeyAvailable -and ($Key = $Host.UI.RawUI.ReadKey("AllowCtrlC,NoEcho,IncludeKeyUp"))) {
-                if ([Int]$Key.Character -eq 3) {
-                    Write-Host ""
-                    Write-Warning "CTRL-C detected - closing connections and exiting"
-                    foreach ($Worker in $Workers) {
-                        $Worker.Powershell.dispose()
+            if ($TerminalIsTTY) {
+                if ($Host.UI.RawUI.KeyAvailable -and ($Key = $Host.UI.RawUI.ReadKey("AllowCtrlC,NoEcho,IncludeKeyUp"))) {
+                    if ([Int]$Key.Character -eq 3) {
+                        Write-Host ""
+                        Write-Warning "CTRL-C detected - closing connections and exiting"
+                        foreach ($Worker in $Workers) {
+                            $Worker.Powershell.dispose()
+                        }
                     }
+                    # Flush the key buffer again for the next loop.
+                    $Host.UI.RawUI.FlushInputBuffer()
                 }
-                # Flush the key buffer again for the next loop.
-                $Host.UI.RawUI.FlushInputBuffer()
             }
+            else {
+                Start-Sleep -Seconds 1
+            }
+            
             
         }
     }
     finally {
-        [Console]::TreatControlCAsInput = $OldControlCAsInput
+        if ($TerminalIsTTY) {
+            [Console]::TreatControlCAsInput = $OldControlCAsInput
+        }
+        else {
+            Write-Host "[!] Closing connections and exiting"
+            foreach ($Worker in $Workers) {
+                $Worker.Powershell.dispose()
+            }
+        }
+        
     }
 
 }   
@@ -379,10 +406,17 @@ function Start-SocksProxy {
         Write-Host "Listening on $BindAddress`:$BindPort"
 
         # Handle Ctrl-C
-        $OldControlCAsInput = [Console]::TreatControlCAsInput
-        [Console]::TreatControlCAsInput = $True
-        Start-Sleep -Seconds 1              # Helps flush buffer
-        $Host.UI.RawUI.FlushInputBuffer()
+        try {
+            $OldControlCAsInput = [Console]::TreatControlCAsInput
+            [Console]::TreatControlCAsInput = $True
+            $TerminalIsTTY = $True
+            Start-Sleep -Seconds 1              # Helps flush buffer
+            $Host.UI.RawUI.FlushInputBuffer()
+        }
+        catch {
+            $TerminalIsTTY = $False
+        }
+        
 
         # Listen and serve
         while ($true) {
@@ -436,23 +470,27 @@ function Start-SocksProxy {
             }
             # Check for ctrl-c
             else {
-                if ($Host.UI.RawUI.KeyAvailable -and ($Key = $Host.UI.RawUI.ReadKey("AllowCtrlC,NoEcho,IncludeKeyUp"))) {
-                    if ([Int]$Key.Character -eq 3) {
-                        Write-Host ""
-                        Write-Warning "CTRL-C detected - closing connections and exiting"
-
-                        Foreach ($Worker in $Workers) {
-                            $Worker.PowerShell.Dispose()
+                if ($TerminalIsTTY) {
+                    if ($Host.UI.RawUI.KeyAvailable -and ($Key = $Host.UI.RawUI.ReadKey("AllowCtrlC,NoEcho,IncludeKeyUp"))) {
+                        if ([Int]$Key.Character -eq 3) {
+                            Write-Host ""
+                            Write-Warning "CTRL-C detected - closing connections and exiting"
+    
+                            Foreach ($Worker in $Workers) {
+                                $Worker.PowerShell.Dispose()
+                            }
+    
+                            [Console]::TreatControlCAsInput = $False
+                            break
                         }
-
-                        [Console]::TreatControlCAsInput = $False
-                        break
+                        # Flush the key buffer again for the next loop.
+                        $Host.UI.RawUI.FlushInputBuffer()
                     }
-                    # Flush the key buffer again for the next loop.
-                    $Host.UI.RawUI.FlushInputBuffer()
+                }
+                else {
+                    Start-Sleep -Seconds 1
                 }
             }
-            
             
         }
     }
@@ -462,8 +500,10 @@ function Start-SocksProxy {
     Finally {
 
         # Reset Ctrl-C handling to normal
-        [Console]::TreatControlCAsInput = $OldControlCAsInput
-        
+        if ($TerminalIsTTY) {
+            [Console]::TreatControlCAsInput = $OldControlCAsInput
+        }
+                
         Write-Verbose "Server closing..."
         Write-Host "Total connections received: $ConnectionCount"
 

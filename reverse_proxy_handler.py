@@ -513,9 +513,9 @@ def create_ssl_cert(cert_path=None, key_path=None, temporary=True):
             key_path = os.path.abspath(key_path)
         else:
             if os.access(os.getcwd(), os.W_OK):
-                cert_path = os.path.join(os.getcwd(), "cert.key")
+                key_path = os.path.join(os.getcwd(), "cert.key")
             else:
-                cert_path = os.path.join(tempfile.gettempdir(), "cert.key")
+                key_path = os.path.join(tempfile.gettempdir(), "cert.key")
  
         logger.debug("Path to SSL cert: {}".format(cert_path))
         logger.debug("Path to SSL key: {}".format(key_path))

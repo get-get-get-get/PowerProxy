@@ -20,8 +20,8 @@ For detailed usage, check out PowerProxy's help, or use *./reverse_proxy_handler
 ### **Run a reverse proxy**
 On local machine, start the handler:
 ```bash
-# Listen for reverse proxies on port 8080. Clients connect to port 1080
-./reverse_proxy_handler.py -p 8080 --client-port 1080
+# Listen for reverse proxies on port 8080. Clients connect to port 1080 (default)
+./reverse_proxy_handler.py -p 8080 
 ```
 
 In PowerShell:

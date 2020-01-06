@@ -39,8 +39,7 @@ class ProxyHandler:
 
         # Active connections from reverse proxies (sockets)
         self.reverse_sockets = queue.Queue()
-        # Reverse proxies working with clients -- stores tuple (address, id), used by reverse_connection_poller
-        self.used_reverse_sockets = queue.Queue()
+
 
     # SSL/TLS for connection with remote proxies
     def set_ssl_context(self, certificate=None, private_key=None, verify=True):
@@ -378,10 +377,6 @@ class ProxyHandler:
                 self.kill_local_process()
                 raise
         
-        # Record socket use in self.used_reverse_sockets
-        sock_id = id(reverse_socket)
-        self.used_reverse_sockets.put(sock_id)
-
         return reverse_socket
 
     # Check on waiting reverse proxies to see if connection still open

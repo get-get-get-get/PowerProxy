@@ -1,5 +1,3 @@
-
-
 <#
     Author: @GetGetGetGet (github.com/get-get-get-get)
     License: GNU GPLv3

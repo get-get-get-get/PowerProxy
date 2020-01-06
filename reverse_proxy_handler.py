@@ -59,7 +59,6 @@ class ProxyHandler:
             if private_key:
                 self.ssl_key = os.path.abspath(private_key)
         else:
-            self.ssl_cert_is_temporary = True
             self.ssl_cert, self.ssl_key = create_ssl_cert()
 
         ssl_context.load_cert_chain(self.ssl_cert, keyfile=self.ssl_key)
@@ -161,14 +160,6 @@ class ProxyHandler:
             s = self.reverse_sockets.get()
             s.close()
         
-        # Delete temporary ssl files
-        if self.ssl_cert_is_temporary:
-            try:
-                os.remove(self.ssl_cert)
-                os.remove(self.ssl_key)
-            except FileNotFoundError:
-                pass
-
         sys.exit(0)
 
     # Send "KILL" message to reverse proxies

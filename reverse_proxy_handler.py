@@ -408,9 +408,16 @@ class ProxyHandler:
 
                 # Means connection closed
                 if len(data) == 0:
-                    # Close socket
-                    reverse_sock.shutdown(socket.SHUT_RDWR)         # Disallow further reads and writes
-                    reverse_sock.close()
+                    try:
+                        # Close socket
+                        reverse_sock.shutdown(socket.SHUT_RDWR)         # Disallow further reads and writes
+                        reverse_sock.close()
+                    except OSError as e:
+                        # Socket not connected error
+                        if e.errno == 57:
+                            pass
+                        else:
+                            logger.error(e)
 
                     # Remove socket (and possibly host) from reverse_connections
                     self.reverse_connections[address].remove(sock_id)
@@ -443,6 +450,9 @@ class ProxyHandler:
                 # Set timeout to original value, put back in queue
                 reverse_sock.settimeout(old_timeout)
                 self.reverse_sockets.put(reverse_sock)
+            
+
+
 
         return
 

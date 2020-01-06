@@ -430,7 +430,7 @@ class ProxyHandler:
 
                     # Remove socket (and possibly host) from reverse_connections
                     self.reverse_connections[address].remove(sock_id)
-                    conns = len(self.reverse_connections[address])
+                    conns = self.reverse_sockets.qsize()
                     logger.debug("[-] Connection to proxy {} lost ({} remain)".format(address, conns))
 
                     # Remove host if there are no remaining connections

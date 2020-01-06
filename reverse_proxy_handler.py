@@ -492,9 +492,9 @@ def create_ssl_cert(cert_path=None, key_path=None, temporary=True):
             domain = "example.local"
 
         # Create certificate path
-        if cert_path:
+        if cert_path != None:
             if os.path.exists(cert_path):
-                temp_cert_path = os.path.join(tempfile.gettempdir(), os.path.splitext(sys.argv[0])[0]) + "pem"
+                temp_cert_path = os.path.join(tempfile.gettempdir(), os.path.splitext(sys.argv[0])[0]) + ".pem"
                 logger.error("[!] File at {} already exists! Saving cert to {}".format(cert_path, temp_cert_path))
                 cert_path = temp_cert_path
             cert_path = os.path.abspath(cert_path)
@@ -505,9 +505,9 @@ def create_ssl_cert(cert_path=None, key_path=None, temporary=True):
                 cert_path = os.path.join(tempfile.gettempdir(), "cert.pem")
 
         # Create key path
-        if key_path:
+        if key_path !=  None:
             if os.path.exists(key_path):
-                temp_key_path = os.path.join(tempfile.gettempdir(), os.path.splitext(sys.argv[0])[0]) + "pem"
+                temp_key_path = os.path.join(tempfile.gettempdir(), os.path.splitext(sys.argv[0])[0]) + ".key"
                 logger.error("[!] File at {} already exists! Saving cert to {}".format(key_path, temp_key_path))
                 key_path = temp_key_path
             key_path = os.path.abspath(key_path)

@@ -517,8 +517,8 @@ def create_ssl_cert(cert_path=None, key_path=None, temporary=True):
             else:
                 key_path = os.path.join(tempfile.gettempdir(), "cert.key")
  
-        logger.debug("Path to SSL cert: {}".format(cert_path))
-        logger.debug("Path to SSL key: {}".format(key_path))
+        logger.info("Path to SSL cert: {}".format(cert_path))
+        logger.info("Path to SSL key: {}".format(key_path))
     
     # Now run OpenSSL
     openssl = f'openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout {key_path} -out {cert_path} -batch -subj /CN={domain}'
